@@ -4,9 +4,9 @@ from typing import Dict
 
 
 def run_planning_agent(context: Dict) -> Dict:
-    """Return context as-is until LLM/RAG chain is wired."""
+    """Return integration contract for future wiring."""
     return {
         "status": "stub",
-        "message": "LangChain agent will be connected after model/provider decision.",
+        "message": "Use Chroma + Google text-embedding-004 after RAG docs are finalized.",
         "context": context,
     }

@@ -1,5 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
+
+
+SCHEDULER_STATUS = "skeleton"
 
 
 def build_daily_plan(
@@ -8,42 +11,33 @@ def build_daily_plan(
     priority_areas: List[str],
     weather_summary: Optional[str] = None,
 ):
-    start = datetime.strptime("08:00", "%H:%M")
-    end = datetime.strptime("17:00", "%H:%M")
-    slot = timedelta(minutes=30)
+    """일정 알고리즘 확정 전 스켈레톤 응답.
 
-    sequences = rag.get("waterproof_sequences", {})
-    default_sequence = ["바탕 정리", "프라이머", "방수층 시공", "건조 확인"]
-
-    timeline = []
-    current = start
+    추후 RAG 문서 완성 후 우선순위/건조시간/날씨 제약 기반 최적화 로직으로 교체.
+    """
     area_cycle = priority_areas or ["세대", "상가", "지하"]
+    timeline = []
 
-    idx = 0
-    while current < end:
-        next_time = current + slot
-        for worker in workers:
-            area = area_cycle[idx % len(area_cycle)]
-            seq = sequences.get("우레탄방수(노출/비노출)", default_sequence)
-            task = seq[idx % len(seq)]
+    for worker in workers:
+        for area in area_cycle:
             timeline.append(
                 {
                     "worker": worker,
-                    "start": current.strftime("%H:%M"),
-                    "end": next_time.strftime("%H:%M"),
+                    "start": "08:00",
+                    "end": "08:30",
                     "area": area,
-                    "task": task,
-                    "weather_note": weather_summary or "weather api 연동 전",
+                    "task": "[스켈레톤] 작업 순서 알고리즘 확정 후 자동 생성",
+                    "weather_note": weather_summary or "날씨 연동 전",
                 }
             )
-            idx += 1
-        current = next_time
+            break
 
     return {
         "date": datetime.now().strftime("%Y-%m-%d"),
+        "scheduler_status": SCHEDULER_STATUS,
         "timeline": timeline,
         "notes": [
-            "환기 상태와 날씨에 따라 건조 시간 재조정 필요",
-            "비 예보 시 옥외 노출 작업 재배치",
+            "RAG 문서 완성 후 실제 배정 알고리즘을 연결합니다.",
+            "현재는 UI/입력 흐름 확인용 임시 결과입니다.",
         ],
     }

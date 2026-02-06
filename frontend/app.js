@@ -11,12 +11,13 @@ function renderTimeline(plan) {
   const timeline = document.getElementById("timeline");
   timeline.innerHTML = "";
 
+  const status = document.createElement("p");
+  status.className = "scheduler-status";
+  status.textContent = `스케줄러 상태: ${plan.scheduler_status}`;
+  timeline.appendChild(status);
+
   const workers = [...new Set(plan.timeline.map((x) => x.worker))];
-  const times = [];
-  for (let h = 8; h < 17; h++) {
-    times.push(`${String(h).padStart(2, "0")}:00`);
-    times.push(`${String(h).padStart(2, "0")}:30`);
-  }
+  const times = ["08:00"];
 
   workers.forEach((worker) => {
     const row = document.createElement("div");
@@ -55,6 +56,7 @@ document.getElementById("plan-form").addEventListener("submit", async (e) => {
   }
 
   const payload = {
+    site_id: document.getElementById("site-id").value.trim(),
     selected_workers: parseCSV(document.getElementById("workers").value),
     incoming_materials: incomingMaterials,
     priority_areas: parseCSV(document.getElementById("areas").value),
