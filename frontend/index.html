@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>방수 작업 플래너</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>방수 작업 플래너 (MVP)</h1>
+      <p>Usecase0~4 기반 초기 화면</p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Usecase2: 작업 전 입력</h2>
+        <form id="plan-form">
+          <label>작업 인력(쉼표 구분)
+            <input id="workers" placeholder="정OO, 김OO" required />
+          </label>
+          <label>금일 입고 자재(JSON)
+            <textarea id="incoming" placeholder='{"우레탄": 5}'></textarea>
+          </label>
+          <label>우선 작업 구역(쉼표 구분)
+            <input id="areas" placeholder="세대,상가" />
+          </label>
+          <label>날씨 요약
+            <input id="weather" placeholder="흐림, 습도 높음" />
+          </label>
+          <button type="submit">계획 세우기</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>AI 작업 타임라인</h2>
+        <div id="timeline"></div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
