@@ -9,22 +9,68 @@
   <body>
     <header>
       <h1>방수 작업 플래너 (MVP)</h1>
-      <p>현장별 관리 + 일정 스켈레톤</p>
+      <p>Usecase1 → Usecase2 흐름</p>
     </header>
 
     <main>
       <section>
+        <h2>Usecase1: 최초 설정</h2>
+
+        <div class="split">
+          <div>
+            <label>현장 선택
+              <select id="site-select"></select>
+            </label>
+            <div class="inline-form">
+              <input id="new-site-id" placeholder="신규 현장 ID" />
+              <button type="button" id="create-site-btn">현장 생성/선택</button>
+            </div>
+
+            <h3>작업 인력 추가</h3>
+            <div class="inline-form">
+              <input id="worker-name" placeholder="정OO" />
+              <button type="button" id="add-worker-btn">추가</button>
+            </div>
+
+            <h3>현재 자재 입고</h3>
+            <div class="inline-form triple">
+              <select id="material-select"></select>
+              <input id="custom-material" placeholder="직접입력 자재명" disabled />
+              <input id="material-qty" type="number" step="0.1" placeholder="수량" />
+              <button type="button" id="add-inventory-btn">입고 추가</button>
+            </div>
+
+            <p class="hint">* 앱 사용 이전 작업 진행도는 구조만 유지하고 UI 입력은 보류합니다.</p>
+            <button type="button" id="go-usecase2-btn">Usecase2로 이동</button>
+          </div>
+
+          <div>
+            <h3>현재 작업 인력 현황</h3>
+            <table>
+              <thead>
+                <tr><th>이름</th></tr>
+              </thead>
+              <tbody id="worker-table-body"></tbody>
+            </table>
+
+            <h3>현재 자재 재고</h3>
+            <table>
+              <thead>
+                <tr><th>자재</th><th>수량</th></tr>
+              </thead>
+              <tbody id="inventory-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="usecase2-section" class="hidden">
         <h2>Usecase2: 작업 전 입력</h2>
         <form id="plan-form">
-          <label>현장 ID
-            <input id="site-id" value="default-site" required />
-          </label>
-          <label>작업 인력(쉼표 구분)
-            <input id="workers" placeholder="정OO, 김OO" required />
-          </label>
-          <label>금일 입고 자재(JSON)
-            <textarea id="incoming" placeholder='{"우레탄": 5}'></textarea>
-          </label>
+          <p id="active-site-text"></p>
+          <label>오늘 작업 인력 선택</label>
+          <div id="worker-checkboxes"></div>
+
           <label>우선 작업 구역(쉼표 구분)
             <input id="areas" placeholder="세대,상가" />
           </label>

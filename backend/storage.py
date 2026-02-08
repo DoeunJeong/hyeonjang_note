@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 DATA_DIR = Path("data")
 COMMON_FILE = DATA_DIR / "common.json"
@@ -22,6 +22,11 @@ def _read_json(path: Path, default: Dict[str, Any]) -> Dict[str, Any]:
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def list_site_ids() -> List[str]:
+    _ensure_dirs()
+    return sorted(path.stem for path in SITES_DIR.glob("*.json"))
 
 
 def load_common_db() -> Dict[str, Any]:

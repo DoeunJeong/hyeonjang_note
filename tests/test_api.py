@@ -11,14 +11,24 @@ def test_health():
     assert res.json()['status'] == 'ok'
 
 
-def test_references():
-    rag = client.get('/api/reference/rag-stack')
-    assert rag.status_code == 200
-    assert rag.json()['vector_db'] == 'chroma'
+def test_usecase1_site_worker_inventory_flow():
+    setup = client.post('/api/usecase1/setup?site_id=site-ui', json={'workers': [], 'inventory': {}})
+    assert setup.status_code == 200
 
-    templates = client.get('/api/reference/templates')
-    assert templates.status_code == 200
-    assert 'inventory' in templates.json()
+    add_worker = client.post('/api/usecase1/workers', json={'site_id': 'site-ui', 'worker_name': '정OO'})
+    assert add_worker.status_code == 200
+    assert '정OO' in add_worker.json()['workers']
+
+    add_inventory = client.post(
+        '/api/usecase1/inventory',
+        json={'site_id': 'site-ui', 'material_name': '우레탄', 'quantity': 2},
+    )
+    assert add_inventory.status_code == 200
+    assert add_inventory.json()['inventory']['우레탄'] == 2
+
+    site_status = client.get('/api/usecase1/site/site-ui')
+    assert site_status.status_code == 200
+    assert '정OO' in site_status.json()['workers']
 
 
 def test_plan_generation_with_site():

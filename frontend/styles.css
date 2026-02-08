@@ -11,7 +11,6 @@ header {
 }
 main {
   display: grid;
-  grid-template-columns: 360px 1fr;
   gap: 16px;
   padding: 16px;
 }
@@ -20,13 +19,19 @@ section {
   border-radius: 8px;
   padding: 16px;
 }
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
 label {
   display: block;
   margin-bottom: 12px;
 }
 input,
 textarea,
-button {
+button,
+select {
   width: 100%;
   margin-top: 6px;
   padding: 8px;
@@ -39,6 +44,37 @@ button {
   border-radius: 6px;
   cursor: pointer;
 }
+.inline-form {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.inline-form.triple {
+  grid-template-columns: 1fr 1fr 120px 120px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 6px;
+  text-align: left;
+}
+.hint {
+  color: #666;
+  font-size: 13px;
+}
+.hidden {
+  display: none;
+}
+.checkbox-item {
+  margin-right: 12px;
+  display: inline-block;
+}
 .scheduler-status {
   margin: 0 0 10px;
   font-weight: 700;
@@ -46,13 +82,12 @@ button {
 }
 .timeline-row {
   display: grid;
-  grid-template-columns: 100px repeat(1, 1fr);
+  grid-template-columns: 120px 1fr;
   border-bottom: 1px solid #e2e2e2;
 }
 .timeline-row span {
   padding: 6px;
   border-right: 1px solid #f0f0f0;
-  min-height: 28px;
 }
 .task-cell {
   background: #fff5a8;

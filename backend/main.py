@@ -6,7 +6,13 @@ from pydantic import BaseModel, Field
 
 from backend.planner import build_daily_plan
 from backend.rag import get_rag_stack_recommendation
-from backend.storage import load_common_db, load_site_db, save_common_db, save_site_db
+from backend.storage import (
+    list_site_ids,
+    load_common_db,
+    load_site_db,
+    save_common_db,
+    save_site_db,
+)
 from backend.templates import get_excel_templates
 from backend.weather import build_weather_request
 
@@ -20,6 +26,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+MATERIAL_OPTIONS = [
+    "우레탄",
+    "프라이머",
+    "복합방수재",
+    "시멘트계 방수재",
+    "실란트",
+]
+
 
 class RAGConfig(BaseModel):
     areas: Dict[str, float] = Field(default_factory=dict)
@@ -31,10 +45,20 @@ class RAGConfig(BaseModel):
 
 
 class UserSetup(BaseModel):
-    workers: List[str]
-    inventory: Dict[str, float]
-    speed_profile: Dict[str, float] = Field(default_factory=dict)
+    workers: List[str] = Field(default_factory=list)
+    inventory: Dict[str, float] = Field(default_factory=dict)
     progress_before_app: Optional[str] = None
+
+
+class WorkerAddRequest(BaseModel):
+    site_id: str
+    worker_name: str
+
+
+class InventoryAddRequest(BaseModel):
+    site_id: str
+    material_name: str
+    quantity: float
 
 
 class DailyInput(BaseModel):
@@ -48,6 +72,48 @@ class DailyInput(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/usecase1/sites")
+def get_sites():
+    return {"sites": list_site_ids()}
+
+
+@app.get("/api/usecase1/site/{site_id}")
+def get_site_status(site_id: str):
+    site_db = load_site_db(site_id)
+    return {
+        "site_id": site_id,
+        "workers": site_db.get("workers", []),
+        "inventory": site_db.get("inventory", {}),
+        "progress_before_app": site_db.get("progress_before_app"),
+    }
+
+
+@app.get("/api/usecase1/material-options")
+def get_material_options():
+    return {"materials": MATERIAL_OPTIONS}
+
+
+@app.post("/api/usecase1/workers")
+def add_worker(payload: WorkerAddRequest):
+    site_db = load_site_db(payload.site_id)
+    workers = site_db.get("workers", [])
+    if payload.worker_name not in workers:
+        workers.append(payload.worker_name)
+    site_db["workers"] = workers
+    save_site_db(payload.site_id, site_db)
+    return {"site_id": payload.site_id, "workers": workers}
+
+
+@app.post("/api/usecase1/inventory")
+def add_inventory(payload: InventoryAddRequest):
+    site_db = load_site_db(payload.site_id)
+    inventory = site_db.get("inventory", {})
+    inventory[payload.material_name] = inventory.get(payload.material_name, 0) + payload.quantity
+    site_db["inventory"] = inventory
+    save_site_db(payload.site_id, site_db)
+    return {"site_id": payload.site_id, "inventory": inventory}
 
 
 @app.get("/api/reference/rag-stack")
@@ -79,7 +145,6 @@ def initial_setup(payload: UserSetup, site_id: str = "default-site"):
     site_db = load_site_db(site_id)
     site_db["workers"] = payload.workers
     site_db["inventory"] = payload.inventory
-    site_db["speed_profile"] = payload.speed_profile
     site_db["progress_before_app"] = payload.progress_before_app
     save_site_db(site_id, site_db)
     return {"saved": True, "site_id": site_id, "workers": len(site_db["workers"])}
