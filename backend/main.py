@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.ai_agent import run_planning_agent
-from backend.rag import get_rag_stack_recommendation
+from backend.rag_store import index_waterproof_sequence_doc, search_waterproof_sequence
 from backend.storage import (
     list_site_ids,
     load_common_db,
@@ -87,6 +87,8 @@ class ProgressUpdateRequest(BaseModel):
 
 def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weather_data: Dict) -> Dict:
     rag = common_db.get("rag", {})
+    sequence_query = ", ".join(payload.priority_areas or site_db.get("priority_areas", [])) or "방수 작업 순서"
+    sequence_docs = search_waterproof_sequence(query=sequence_query, top_k=3).get("items", [])
     return {
         "worker_reg": payload.selected_workers,
         "priority_areas_rag": payload.priority_areas or site_db.get("priority_areas", []),
@@ -99,12 +101,23 @@ def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weat
         "inventory_rag": site_db.get("inventory", {}),
         "weather_rag": weather_data,
         "waterproof_sequences_rag": rag.get("waterproof_sequences", {}),
+        "waterproof_sequence_docs_rag": sequence_docs,
     }
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/api/reference/waterproof-sequence/index")
+def index_waterproof_sequence(doc_path: str = "docs/waterproof_sequence.md"):
+    return index_waterproof_sequence_doc(doc_path=doc_path)
+
+
+@app.get("/api/reference/waterproof-sequence/search")
+def search_waterproof_sequence_docs(query: str, top_k: int = 3):
+    return search_waterproof_sequence(query=query, top_k=top_k)
 
 
 @app.get("/api/usecase1/sites")
@@ -163,11 +176,6 @@ def update_area_progress(payload: ProgressUpdateRequest):
     site_db["area_progress"] = current
     save_site_db(payload.site_id, site_db)
     return {"site_id": payload.site_id, "area_progress": current}
-
-
-@app.get("/api/reference/rag-stack")
-def rag_stack_reference():
-    return get_rag_stack_recommendation()
 
 
 @app.get("/api/reference/templates")
@@ -237,7 +245,6 @@ def create_plan(payload: DailyInput):
         "rag_context": rag_context,
     }
 
-    # 데일리 로그 저장 + 진행률 업데이트 반복 루프 기반
     site_db["daily_logs"].append({"input": payload.model_dump(), "plan": plan})
     save_site_db(payload.site_id, site_db)
     return {"site_id": payload.site_id, "plan": plan, "inventory": site_db["inventory"]}

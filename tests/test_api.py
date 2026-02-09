@@ -20,6 +20,12 @@ def test_weather_request_spec():
     assert 'hourly' in spec['params']
 
 
+def test_waterproof_sequence_index_endpoint_without_key():
+    res = client.post('/api/reference/waterproof-sequence/index')
+    assert res.status_code == 200
+    assert 'indexed' in res.json()
+
+
 def test_usecase1_structured_fields_flow():
     setup = client.post(
         '/api/usecase1/setup?site_id=site-ui',
@@ -64,6 +70,7 @@ def test_plan_generation_with_rag_context_keys():
     assert 'area_progress_rag' in rag_context
     assert 'area_waterproof_methods_rag' in rag_context
     assert 'weather_rag' in rag_context
+    assert 'waterproof_sequence_docs_rag' in rag_context
 
 
 def test_material_options_endpoint():

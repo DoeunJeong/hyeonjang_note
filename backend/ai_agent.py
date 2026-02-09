@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List
@@ -60,6 +61,22 @@ def _fallback_plan(context: Dict) -> Dict:
     }
 
 
+def _compact_payload(context: Dict) -> Dict:
+    return {
+        "worker_reg": context.get("worker_reg", []),
+        "priority_areas_rag": context.get("priority_areas_rag", []),
+        "all_areas_rag": context.get("all_areas_rag", []),
+        "floor_area_map_rag": context.get("floor_area_map_rag", {}),
+        "area_progress_rag": context.get("area_progress_rag", {}),
+        "area_waterproof_methods_rag": context.get("area_waterproof_methods_rag", {}),
+        "previous_progress_rag": context.get("previous_progress_rag"),
+        "previous_daily_report_rag": context.get("previous_daily_report_rag"),
+        "inventory_rag": context.get("inventory_rag", {}),
+        "weather_rag": context.get("weather_rag", {}),
+        "waterproof_sequences_rag": context.get("waterproof_sequences_rag", {}),
+    }
+
+
 def run_planning_agent(context: Dict) -> Dict:
     if not os.getenv("GEMINI_API_KEY"):
         return _fallback_plan(context)
@@ -72,62 +89,24 @@ def run_planning_agent(context: Dict) -> Dict:
         return _fallback_plan(context)
 
     parser = PydanticOutputParser(pydantic_object=PlanOutput)
+    compact = _compact_payload(context)
 
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                """너는 방수 현장 작업계획 전문가다.
-
-[핵심 지시사항]
-1. worker_reg에 있는 각 작업자에게 08:00~17:00까지 30분 단위로 작업 배정
-2. 작업자별로 독립적인 일정 구성 (각 작업자는 전일 근무)
-3. priority_areas_rag의 구역을 우선적으로 배정
-4. 나머지 정보들(RAG, 날씨, 재고, 진행상황)을 모두 활용하여 최적의 계획 수립
-
-[활용할 정보]
-- 작업자 목록: {worker_reg}
-- 우선순위 구역: {priority_areas_rag}
-- 전체 구역: {all_areas_rag}
-- 층별-구역 맵: {floor_area_map_rag}
-- 구역별 진행률: {area_progress_rag}
-- 구역별 방수 공법: {area_waterproof_methods_rag}
-- 이전 진행 상황: {previous_progress_rag}
-- 이전 일일 보고: {previous_daily_report_rag}
-- 자재 재고: {inventory_rag}
-- 날씨 정보: {weather_rag}
-- 방수 시공 순서: {waterproof_sequences_rag}
-- 가용 시간 슬롯: {time_slots}
-
-[출력 JSON 스키마]
-다음 형식으로 정확히 출력하되, JSON의 timeline 배열에 각 30분 구간을 PlanItem으로 포함:
-{{
-  "scheduler_status": "llm_generated",
-  "model": "gemini-2.0-flash",
-  "timeline": [
-    {{
-      "worker": "작업자명",
-      "start": "HH:MM (08:00부터 16:30까지)",
-      "end": "HH:MM (30분 후)",
-      "area": "작업 구역명",
-      "task": "구체적 작업 내용"
-    }}
-  ],
-  "notes": ["계획 수립 시 고려사항 및 주의사항"]
-}}
-
-[계획 수립 원칙]
-- 모든 작업자는 08:00 시작, 17:00 종료 (총 9시간, 18개 타임슬롯)
-- 각 슬롯은 정확히 30분 단위
-- 우선순위 구역부터 배정하되 골고루 배분
-- 날씨가 악악하면 실내 작업 우선
-- 재고 부족 시 노트에 별도 기재
-- 이전 진행상황을 바탕으로 연속성 있게 배정
-{format_instructions}""",
+                """
+너는 방수 현장 작업계획 전문가다.
+입력 변수 worker_reg, priority_areas_rag, all_areas_rag, floor_area_map_rag, area_progress_rag,
+area_waterproof_methods_rag, previous_progress_rag, previous_daily_report_rag, inventory_rag,
+weather_rag, waterproof_sequences_rag, time_slots를 모두 활용해 계획한다.
+규칙: 작업자는 worker_reg만 사용, 30분 단위 time_slots만 사용, 작업자별 독립 배정.
+{format_instructions}
+""",
             ),
             (
                 "human",
-                "위의 모든 정보와 원칙을 고려하여 오늘의 방수 현장 작업계획을 수립하고 JSON 형식으로 출력해주세요.",
+                "planning_inputs_json={planning_inputs_json}\ntime_slots={time_slots}",
             ),
         ]
     )
@@ -138,17 +117,7 @@ def run_planning_agent(context: Dict) -> Dict:
     try:
         parsed: PlanOutput = chain.invoke(
             {
-                "worker_reg": context.get("worker_reg", []),
-                "priority_areas_rag": context.get("priority_areas_rag", []),
-                "all_areas_rag": context.get("all_areas_rag", []),
-                "floor_area_map_rag": context.get("floor_area_map_rag", {}),
-                "area_progress_rag": context.get("area_progress_rag", {}),
-                "area_waterproof_methods_rag": context.get("area_waterproof_methods_rag", {}),
-                "previous_progress_rag": context.get("previous_progress_rag"),
-                "previous_daily_report_rag": context.get("previous_daily_report_rag"),
-                "inventory_rag": context.get("inventory_rag", {}),
-                "weather_rag": context.get("weather_rag", {}),
-                "waterproof_sequences_rag": context.get("waterproof_sequences_rag", {}),
+                "planning_inputs_json": json.dumps(compact, ensure_ascii=False),
                 "time_slots": _build_time_slots(),
                 "format_instructions": parser.get_format_instructions(),
             }

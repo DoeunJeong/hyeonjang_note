@@ -33,6 +33,14 @@ uvicorn backend.main:app --reload
 - `inventory_rag`
 - `weather_rag` (시간별 온도/습도/강수확률/강수)
 - `waterproof_sequences_rag`
+- `waterproof_sequence_docs_rag` (벡터 검색 결과)
+
+## 벡터 스토어
+- 문서: `docs/waterproof_sequence.md`
+- 저장소: `data/vector_store`
+- 컬렉션: `waterproof_sequences`
+- 인덱싱 API: `POST /api/reference/waterproof-sequence/index`
+- 검색 API: `GET /api/reference/waterproof-sequence/search?query=...`
 
 ## 주요 API
 - `POST /api/usecase0/rag` : 공통 RAG 저장
