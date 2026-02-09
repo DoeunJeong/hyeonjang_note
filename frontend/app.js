@@ -8,6 +8,21 @@ function parseCSV(value) {
     .filter(Boolean);
 }
 
+function buildTimeSlots(start = "08:00", end = "17:00") {
+  const slots = [];
+  let [h, m] = start.split(":").map(Number);
+  const [endH, endM] = end.split(":").map(Number);
+  while (h < endH || (h === endH && m < endM)) {
+    slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    m += 30;
+    if (m >= 60) {
+      m = 0;
+      h += 1;
+    }
+  }
+  return slots;
+}
+
 async function fetchJSON(url, options = {}) {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -50,15 +65,37 @@ function renderTimeline(plan) {
 
   const status = document.createElement("p");
   status.className = "scheduler-status";
-  status.textContent = `스케줄러 상태: ${plan.scheduler_status}`;
+  status.textContent = `스케줄러 상태: ${plan.scheduler_status} / 모델: ${plan.model || "-"}`;
   timeline.appendChild(status);
 
-  plan.timeline.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "timeline-row";
-    row.innerHTML = `<span>${item.worker}</span><span class="task-cell">${item.start}~${item.end} | ${item.area} / ${item.task}</span>`;
-    timeline.appendChild(row);
+  const workers = [...new Set(plan.timeline.map((x) => x.worker))];
+  const times = buildTimeSlots();
+
+  const table = document.createElement("table");
+  table.className = "plan-grid";
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headerRow.innerHTML = `<th>시간</th>${workers.map((w) => `<th>${w}</th>`).join("")}`;
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement("tbody");
+  times.forEach((time) => {
+    const tr = document.createElement("tr");
+    const cells = [`<td class="time-cell">${time}</td>`];
+    workers.forEach((worker) => {
+      const block = plan.timeline.find((x) => x.worker === worker && x.start === time);
+      cells.push(
+        `<td class="task-cell" contenteditable="true">${block ? `${block.area} / ${block.task}` : ""}</td>`,
+      );
+    });
+    tr.innerHTML = cells.join("");
+    tbody.appendChild(tr);
   });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
+  timeline.appendChild(table);
 }
 
 async function loadSites() {
@@ -103,6 +140,9 @@ async function loadSiteStatus(siteId) {
   renderWorkers(data.workers);
   renderInventory(data.inventory);
   document.getElementById("active-site-text").textContent = `선택 현장: ${activeSiteId}`;
+  if (data.priority_areas?.length) {
+    document.getElementById("areas").value = data.priority_areas.join(",");
+  }
 }
 
 document.getElementById("site-select").addEventListener("change", async (e) => {
@@ -119,7 +159,7 @@ document.getElementById("create-site-btn").addEventListener("click", async () =>
   await fetchJSON(`${API_BASE}/api/usecase1/setup?site_id=${encodeURIComponent(newSite)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workers: [], inventory: {} }),
+    body: JSON.stringify({ workers: [], inventory: {}, priority_areas: [] }),
   });
 
   await loadSites();

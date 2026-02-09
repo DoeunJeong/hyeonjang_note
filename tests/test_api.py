@@ -12,7 +12,10 @@ def test_health():
 
 
 def test_usecase1_site_worker_inventory_flow():
-    setup = client.post('/api/usecase1/setup?site_id=site-ui', json={'workers': [], 'inventory': {}})
+    setup = client.post(
+        '/api/usecase1/setup?site_id=site-ui',
+        json={'workers': [], 'inventory': {}, 'priority_areas': ['세대', '상가']},
+    )
     assert setup.status_code == 200
 
     add_worker = client.post('/api/usecase1/workers', json={'site_id': 'site-ui', 'worker_name': '정OO'})
@@ -21,21 +24,22 @@ def test_usecase1_site_worker_inventory_flow():
 
     add_inventory = client.post(
         '/api/usecase1/inventory',
-        json={'site_id': 'site-ui', 'material_name': '우레탄', 'quantity': 2},
+        json={'site_id': 'site-ui', 'material_name': '우레탄방수재', 'quantity': 2},
     )
     assert add_inventory.status_code == 200
-    assert add_inventory.json()['inventory']['우레탄'] == 2
+    assert add_inventory.json()['inventory']['우레탄방수재'] == 2
 
     site_status = client.get('/api/usecase1/site/site-ui')
     assert site_status.status_code == 200
     assert '정OO' in site_status.json()['workers']
+    assert site_status.json()['priority_areas'] == ['세대', '상가']
 
 
-def test_plan_generation_with_site():
+def test_plan_generation_with_rag_context():
     payload = {
         'site_id': 'site-a',
         'selected_workers': ['정OO', '김OO'],
-        'incoming_materials': {'우레탄': 3},
+        'incoming_materials': {'우레탄방수재': 3},
         'priority_areas': ['세대'],
         'weather_summary': '맑음',
     }
@@ -43,5 +47,11 @@ def test_plan_generation_with_site():
     assert res.status_code == 200
     body = res.json()
     assert body['site_id'] == 'site-a'
-    assert body['plan']['scheduler_status'] == 'skeleton'
-    assert len(body['plan']['timeline']) > 0
+    assert 'rag_context' in body['plan']
+    assert len(body['plan']['timeline']) >= 1
+
+
+def test_material_options_endpoint():
+    res = client.get('/api/usecase1/material-options')
+    assert res.status_code == 200
+    assert len(res.json()['materials']) >= 1

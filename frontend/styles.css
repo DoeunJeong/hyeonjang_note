@@ -80,15 +80,14 @@ td {
   font-weight: 700;
   color: #1f4e79;
 }
-.timeline-row {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  border-bottom: 1px solid #e2e2e2;
+.plan-grid th {
+  background: #eef5fc;
 }
-.timeline-row span {
-  padding: 6px;
-  border-right: 1px solid #f0f0f0;
+.time-cell {
+  font-weight: 700;
+  width: 80px;
 }
 .task-cell {
   background: #fff5a8;
+  min-width: 150px;
 }

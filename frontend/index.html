@@ -9,7 +9,7 @@
   <body>
     <header>
       <h1>방수 작업 플래너 (MVP)</h1>
-      <p>Usecase1 → Usecase2 흐름</p>
+      <p>Usecase1 → Usecase2 + Gemini/LangChain 계획생성</p>
     </header>
 
     <main>
@@ -74,10 +74,10 @@
           <label>우선 작업 구역(쉼표 구분)
             <input id="areas" placeholder="세대,상가" />
           </label>
-          <label>날씨 요약
-            <input id="weather" placeholder="흐림, 습도 높음" />
+          <label>수동 날씨 메모(선택)
+            <input id="weather" placeholder="비 예보로 옥외 작업 최소화" />
           </label>
-          <button type="submit">계획 세우기</button>
+          <button type="submit">오늘의 계획 생성 (Gemini + RAG)</button>
         </form>
       </section>
 
