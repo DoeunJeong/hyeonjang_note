@@ -4,6 +4,23 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, List
 
+from pydantic import BaseModel, Field
+
+
+class PlanItem(BaseModel):
+    worker: str
+    start: str
+    end: str
+    area: str
+    task: str
+
+
+class PlanOutput(BaseModel):
+    scheduler_status: str = "llm_generated"
+    model: str = "gemini-2.0-flash"
+    timeline: List[PlanItem] = Field(default_factory=list)
+    notes: List[str] = Field(default_factory=list)
+
 
 def _build_time_slots(start: str = "08:00", end: str = "17:00") -> List[str]:
     slots: List[str] = []
@@ -48,6 +65,7 @@ def run_planning_agent(context: Dict) -> Dict:
         return _fallback_plan(context)
 
     try:
+        from langchain_core.output_parsers import PydanticOutputParser
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_google_genai import ChatGoogleGenerativeAI
     except Exception:
@@ -55,6 +73,7 @@ def run_planning_agent(context: Dict) -> Dict:
 
     workers = context.get("workers", [])
     times = _build_time_slots()
+    parser = PydanticOutputParser(pydantic_object=PlanOutput)
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -62,21 +81,11 @@ def run_planning_agent(context: Dict) -> Dict:
                 "system",
                 """
 너는 방수 현장 작업계획 전문가다.
-반드시 JSON만 출력한다.
-출력 스키마:
-{
-  "scheduler_status": "llm_generated",
-  "model": "gemini-2.0-flash",
-  "timeline": [
-    {"worker":"", "start":"HH:MM", "end":"HH:MM", "area":"", "task":""}
-  ],
-  "notes": [""]
-}
-규칙:
-- 작업자는 입력된 workers만 사용.
-- 시간은 30분 단위(08:00~17:00).
-- 작업계획은 작업자별로 독립 배정.
-- weather_rag, previous_progress_rag, previous_daily_report_rag, inventory_rag를 반영.
+작업자는 입력 workers만 사용하고, 시간은 30분 단위(08:00~17:00)로 계획한다.
+작업계획은 작업자별 독립 배정으로 작성한다.
+weather/previous_progress/previous_daily_report/inventory/waterproof_sequences를 반영한다.
+반드시 아래 포맷 지시를 지켜서 출력한다.
+{format_instructions}
 """,
             ),
             (
@@ -87,22 +96,17 @@ def run_planning_agent(context: Dict) -> Dict:
     )
 
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
-    chain = prompt | llm
-    response = chain.invoke(
-        {
-            "context_json": str(context),
-            "workers": workers,
-            "time_slots": times,
-        }
-    )
+    chain = prompt | llm | parser
 
-    text = response.content if isinstance(response.content, str) else str(response.content)
     try:
-        import json
-
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict) or "timeline" not in parsed:
-            raise ValueError("invalid llm output")
-        return parsed
+        parsed: PlanOutput = chain.invoke(
+            {
+                "context_json": str(context),
+                "workers": workers,
+                "time_slots": times,
+                "format_instructions": parser.get_format_instructions(),
+            }
+        )
+        return parsed.model_dump()
     except Exception:
         return _fallback_plan(context)
