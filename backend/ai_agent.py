@@ -22,7 +22,7 @@ class PlanOutput(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-def _build_time_slots(start: str = "07:00", end: str = "17:00") -> List[str]:
+def _build_time_slots(start: str = "08:00", end: str = "17:00") -> List[str]:
     slots: List[str] = []
     current = datetime.strptime(start, "%H:%M")
     end_time = datetime.strptime(end, "%H:%M")
@@ -33,8 +33,8 @@ def _build_time_slots(start: str = "07:00", end: str = "17:00") -> List[str]:
 
 
 def _fallback_plan(context: Dict) -> Dict:
-    workers = context.get("workers", [])
-    areas = context.get("priority_areas") or context.get("all_areas") or ["세대"]
+    workers = context.get("worker_reg", [])
+    areas = context.get("priority_areas_rag") or context.get("all_areas_rag") or ["세대"]
     times = _build_time_slots()
     timeline = []
 
@@ -71,8 +71,6 @@ def run_planning_agent(context: Dict) -> Dict:
     except Exception:
         return _fallback_plan(context)
 
-    workers = context.get("workers", [])
-    times = _build_time_slots()
     parser = PydanticOutputParser(pydantic_object=PlanOutput)
 
     prompt = ChatPromptTemplate.from_messages(
@@ -81,16 +79,40 @@ def run_planning_agent(context: Dict) -> Dict:
                 "system",
                 """
 너는 방수 현장 작업계획 전문가다.
-작업자는 입력 workers만 사용하고, 시간은 30분 단위(07:00~17:00)로 계획한다.
+작업자는 worker_reg 목록만 사용하고, 시간은 30분 단위(08:00~17:00)로 계획한다.
 작업계획은 작업자별 독립 배정으로 작성한다.
-weather/previous_progress/previous_daily_report/inventory/waterproof_sequences를 반영한다.
+아래 정보들을 모두 활용해 계획을 작성한다:
+- worker_reg
+- priority_areas_rag
+- all_areas_rag
+- floor_area_map_rag
+- area_progress_rag
+- area_waterproof_methods_rag
+- previous_progress_rag
+- previous_daily_report_rag
+- inventory_rag
+- weather_rag
+- waterproof_sequences_rag
 반드시 아래 포맷 지시를 지켜서 출력한다.
 {format_instructions}
 """,
             ),
             (
                 "human",
-                "context_json={context_json}\nallowed_workers={workers}\ntime_slots={time_slots}",
+                """
+worker_reg={worker_reg}
+priority_areas_rag={priority_areas_rag}
+all_areas_rag={all_areas_rag}
+floor_area_map_rag={floor_area_map_rag}
+area_progress_rag={area_progress_rag}
+area_waterproof_methods_rag={area_waterproof_methods_rag}
+previous_progress_rag={previous_progress_rag}
+previous_daily_report_rag={previous_daily_report_rag}
+inventory_rag={inventory_rag}
+weather_rag={weather_rag}
+waterproof_sequences_rag={waterproof_sequences_rag}
+time_slots={time_slots}
+""",
             ),
         ]
     )
@@ -101,9 +123,18 @@ weather/previous_progress/previous_daily_report/inventory/waterproof_sequences�
     try:
         parsed: PlanOutput = chain.invoke(
             {
-                "context_json": str(context),
-                "workers": workers,
-                "time_slots": times,
+                "worker_reg": context.get("worker_reg", []),
+                "priority_areas_rag": context.get("priority_areas_rag", []),
+                "all_areas_rag": context.get("all_areas_rag", []),
+                "floor_area_map_rag": context.get("floor_area_map_rag", {}),
+                "area_progress_rag": context.get("area_progress_rag", {}),
+                "area_waterproof_methods_rag": context.get("area_waterproof_methods_rag", {}),
+                "previous_progress_rag": context.get("previous_progress_rag"),
+                "previous_daily_report_rag": context.get("previous_daily_report_rag"),
+                "inventory_rag": context.get("inventory_rag", {}),
+                "weather_rag": context.get("weather_rag", {}),
+                "waterproof_sequences_rag": context.get("waterproof_sequences_rag", {}),
+                "time_slots": _build_time_slots(),
                 "format_instructions": parser.get_format_instructions(),
             }
         )

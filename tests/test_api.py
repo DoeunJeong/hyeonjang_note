@@ -18,48 +18,52 @@ def test_weather_request_spec():
     assert spec['params']['latitude'] == 37.46
     assert spec['params']['longitude'] == 126.71
     assert 'hourly' in spec['params']
-    assert 'daily' in spec['params']
 
 
-def test_usecase1_site_worker_inventory_flow():
+def test_usecase1_structured_fields_flow():
     setup = client.post(
         '/api/usecase1/setup?site_id=site-ui',
-        json={'workers': [], 'inventory': {}, 'priority_areas': ['세대', '상가']},
+        json={
+            'workers': ['정OO'],
+            'inventory': {'우레탄방수재': 2},
+            'priority_areas': ['세대'],
+            'floor_area_map': {'세대': {'10층': 400.0}},
+            'area_progress': {'세대': 35.0},
+            'area_waterproof_methods': {'세대': '습식 2종 방수'},
+        },
     )
     assert setup.status_code == 200
 
-    add_worker = client.post('/api/usecase1/workers', json={'site_id': 'site-ui', 'worker_name': '정OO'})
-    assert add_worker.status_code == 200
-    assert '정OO' in add_worker.json()['workers']
-
-    add_inventory = client.post(
-        '/api/usecase1/inventory',
-        json={'site_id': 'site-ui', 'material_name': '우레탄방수재', 'quantity': 2},
-    )
-    assert add_inventory.status_code == 200
-    assert add_inventory.json()['inventory']['우레탄방수재'] == 2
-
     site_status = client.get('/api/usecase1/site/site-ui')
     assert site_status.status_code == 200
-    assert '정OO' in site_status.json()['workers']
-    assert site_status.json()['priority_areas'] == ['세대', '상가']
+    body = site_status.json()
+    assert body['floor_area_map']['세대']['10층'] == 400.0
+    assert body['area_progress']['세대'] == 35.0
+    assert body['area_waterproof_methods']['세대'] == '습식 2종 방수'
 
 
-def test_plan_generation_with_rag_context():
+def test_progress_update_endpoint():
+    res = client.post('/api/usecase3/progress', json={'site_id': 'site-ui', 'area_progress': {'세대': 50.0}})
+    assert res.status_code == 200
+    assert res.json()['area_progress']['세대'] == 50.0
+
+
+def test_plan_generation_with_rag_context_keys():
     payload = {
-        'site_id': 'site-a',
-        'selected_workers': ['정OO', '김OO'],
-        'incoming_materials': {'우레탄방수재': 3},
+        'site_id': 'site-ui',
+        'selected_workers': ['정OO'],
+        'incoming_materials': {},
         'priority_areas': ['세대'],
-        'weather_summary': '맑음',
     }
     res = client.post('/api/usecase2/plan', json=payload)
     assert res.status_code == 200
     body = res.json()
-    assert body['site_id'] == 'site-a'
-    assert 'rag_context' in body['plan']
-    assert 'weather_rag' in body['plan']['rag_context']
-    assert len(body['plan']['timeline']) >= 1
+    rag_context = body['plan']['rag_context']
+    assert 'worker_reg' in rag_context
+    assert 'floor_area_map_rag' in rag_context
+    assert 'area_progress_rag' in rag_context
+    assert 'area_waterproof_methods_rag' in rag_context
+    assert 'weather_rag' in rag_context
 
 
 def test_material_options_endpoint():

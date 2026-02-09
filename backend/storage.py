@@ -35,7 +35,6 @@ def load_common_db() -> Dict[str, Any]:
         COMMON_FILE,
         {
             "rag": {},
-            "waterproof_sequences": {},
             "constraints": [],
         },
     )
@@ -55,8 +54,14 @@ def load_site_db(site_id: str) -> Dict[str, Any]:
             "site_id": site_id,
             "workers": [],
             "inventory": {},
-            "speed_profile": {},
+            "priority_areas": [],
+            "floor_area_map": {},
+            "area_progress": {},
+            "area_waterproof_methods": {},
             "progress_before_app": None,
+            "previous_daily_report": None,
+            "latitude": 37.46,
+            "longitude": 126.71,
             "daily_logs": [],
         },
     )

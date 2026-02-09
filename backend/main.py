@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI
@@ -53,6 +54,9 @@ class UserSetup(BaseModel):
     progress_before_app: Optional[str] = None
     priority_areas: List[str] = Field(default_factory=list)
     previous_daily_report: Optional[str] = None
+    floor_area_map: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    area_progress: Dict[str, float] = Field(default_factory=dict)
+    area_waterproof_methods: Dict[str, str] = Field(default_factory=dict)
     latitude: Optional[float] = 37.46
     longitude: Optional[float] = 126.71
 
@@ -76,12 +80,20 @@ class DailyInput(BaseModel):
     weather_summary: Optional[str] = None
 
 
+class ProgressUpdateRequest(BaseModel):
+    site_id: str
+    area_progress: Dict[str, float]
+
+
 def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weather_data: Dict) -> Dict:
     rag = common_db.get("rag", {})
     return {
-        "workers_rag": payload.selected_workers,
+        "worker_reg": payload.selected_workers,
         "priority_areas_rag": payload.priority_areas or site_db.get("priority_areas", []),
         "all_areas_rag": list(rag.get("areas", {}).keys()),
+        "floor_area_map_rag": site_db.get("floor_area_map", {}),
+        "area_progress_rag": site_db.get("area_progress", {}),
+        "area_waterproof_methods_rag": site_db.get("area_waterproof_methods", {}),
         "previous_progress_rag": site_db.get("progress_before_app"),
         "previous_daily_report_rag": site_db.get("previous_daily_report"),
         "inventory_rag": site_db.get("inventory", {}),
@@ -108,6 +120,9 @@ def get_site_status(site_id: str):
         "workers": site_db.get("workers", []),
         "inventory": site_db.get("inventory", {}),
         "priority_areas": site_db.get("priority_areas", []),
+        "floor_area_map": site_db.get("floor_area_map", {}),
+        "area_progress": site_db.get("area_progress", {}),
+        "area_waterproof_methods": site_db.get("area_waterproof_methods", {}),
         "progress_before_app": site_db.get("progress_before_app"),
     }
 
@@ -140,6 +155,16 @@ def add_inventory(payload: InventoryAddRequest):
     return {"site_id": payload.site_id, "inventory": inventory}
 
 
+@app.post("/api/usecase3/progress")
+def update_area_progress(payload: ProgressUpdateRequest):
+    site_db = load_site_db(payload.site_id)
+    current = site_db.get("area_progress", {})
+    current.update(payload.area_progress)
+    site_db["area_progress"] = current
+    save_site_db(payload.site_id, site_db)
+    return {"site_id": payload.site_id, "area_progress": current}
+
+
 @app.get("/api/reference/rag-stack")
 def rag_stack_reference():
     return get_rag_stack_recommendation()
@@ -159,7 +184,6 @@ def weather_request_preview(latitude: float, longitude: float):
 def save_rag(config: RAGConfig):
     common_db = load_common_db()
     common_db["rag"] = config.model_dump()
-    common_db["waterproof_sequences"] = config.waterproof_sequences
     save_common_db(common_db)
     return {"saved": True, "rag_keys": list(common_db["rag"].keys())}
 
@@ -172,6 +196,9 @@ def initial_setup(payload: UserSetup, site_id: str = "default-site"):
     site_db["progress_before_app"] = payload.progress_before_app
     site_db["priority_areas"] = payload.priority_areas
     site_db["previous_daily_report"] = payload.previous_daily_report
+    site_db["floor_area_map"] = payload.floor_area_map
+    site_db["area_progress"] = payload.area_progress
+    site_db["area_waterproof_methods"] = payload.area_waterproof_methods
     site_db["latitude"] = payload.latitude
     site_db["longitude"] = payload.longitude
     save_site_db(site_id, site_db)
@@ -193,25 +220,16 @@ def create_plan(payload: DailyInput):
     except Exception:
         weather_data = {
             "provider": "open-meteo",
+            "location": {"latitude": lat, "longitude": lon},
+            "hourly_weather": [],
             "integration_status": "failed_fallback",
             "manual_weather_summary": payload.weather_summary,
         }
 
     rag_context = _build_rag_context(common_db=common_db, site_db=site_db, payload=payload, weather_data=weather_data)
-    llm_plan = run_planning_agent(
-        {
-            "workers": payload.selected_workers,
-            "priority_areas": rag_context["priority_areas_rag"],
-            "all_areas": rag_context["all_areas_rag"],
-            "previous_progress": rag_context["previous_progress_rag"],
-            "previous_daily_report": rag_context["previous_daily_report_rag"],
-            "inventory": rag_context["inventory_rag"],
-            "weather": rag_context["weather_rag"],
-            "waterproof_sequences": rag_context["waterproof_sequences_rag"],
-        }
-    )
+    llm_plan = run_planning_agent(rag_context)
     plan = {
-        "date": __import__("datetime").datetime.now().strftime("%Y-%m-%d"),
+        "date": datetime.now().strftime("%Y-%m-%d"),
         "scheduler_status": llm_plan.get("scheduler_status", "llm_generated"),
         "model": llm_plan.get("model", "gemini-2.0-flash"),
         "timeline": llm_plan.get("timeline", []),
@@ -219,6 +237,7 @@ def create_plan(payload: DailyInput):
         "rag_context": rag_context,
     }
 
+    # 데일리 로그 저장 + 진행률 업데이트 반복 루프 기반
     site_db["daily_logs"].append({"input": payload.model_dump(), "plan": plan})
     save_site_db(payload.site_id, site_db)
     return {"site_id": payload.site_id, "plan": plan, "inventory": site_db["inventory"]}
