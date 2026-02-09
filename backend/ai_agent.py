@@ -22,7 +22,7 @@ class PlanOutput(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-def _build_time_slots(start: str = "08:00", end: str = "17:00") -> List[str]:
+def _build_time_slots(start: str = "07:00", end: str = "17:00") -> List[str]:
     slots: List[str] = []
     current = datetime.strptime(start, "%H:%M")
     end_time = datetime.strptime(end, "%H:%M")
@@ -81,7 +81,7 @@ def run_planning_agent(context: Dict) -> Dict:
                 "system",
                 """
 너는 방수 현장 작업계획 전문가다.
-작업자는 입력 workers만 사용하고, 시간은 30분 단위(08:00~17:00)로 계획한다.
+작업자는 입력 workers만 사용하고, 시간은 30분 단위(07:00~17:00)로 계획한다.
 작업계획은 작업자별 독립 배정으로 작성한다.
 weather/previous_progress/previous_daily_report/inventory/waterproof_sequences를 반영한다.
 반드시 아래 포맷 지시를 지켜서 출력한다.
