@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.weather import build_weather_request
 
 client = TestClient(app)
 
@@ -9,6 +10,15 @@ def test_health():
     res = client.get('/health')
     assert res.status_code == 200
     assert res.json()['status'] == 'ok'
+
+
+def test_weather_request_spec():
+    spec = build_weather_request(latitude=37.46, longitude=126.71)
+    assert spec['url'].startswith('https://api.open-meteo.com')
+    assert spec['params']['latitude'] == 37.46
+    assert spec['params']['longitude'] == 126.71
+    assert 'hourly' in spec['params']
+    assert 'daily' in spec['params']
 
 
 def test_usecase1_site_worker_inventory_flow():
@@ -48,6 +58,7 @@ def test_plan_generation_with_rag_context():
     body = res.json()
     assert body['site_id'] == 'site-a'
     assert 'rag_context' in body['plan']
+    assert 'weather_rag' in body['plan']['rag_context']
     assert len(body['plan']['timeline']) >= 1
 
 

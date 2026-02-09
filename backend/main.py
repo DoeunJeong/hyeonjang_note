@@ -53,8 +53,8 @@ class UserSetup(BaseModel):
     progress_before_app: Optional[str] = None
     priority_areas: List[str] = Field(default_factory=list)
     previous_daily_report: Optional[str] = None
-    latitude: Optional[float] = 37.5665
-    longitude: Optional[float] = 126.9780
+    latitude: Optional[float] = 37.46
+    longitude: Optional[float] = 126.71
 
 
 class WorkerAddRequest(BaseModel):
@@ -186,8 +186,8 @@ def create_plan(payload: DailyInput):
     for material, qty in payload.incoming_materials.items():
         site_db["inventory"][material] = site_db["inventory"].get(material, 0) + qty
 
-    lat = site_db.get("latitude", 37.5665)
-    lon = site_db.get("longitude", 126.9780)
+    lat = site_db.get("latitude", 37.46)
+    lon = site_db.get("longitude", 126.71)
     try:
         weather_data = fetch_today_weather(latitude=lat, longitude=lon)
     except Exception:

@@ -24,3 +24,5 @@ uvicorn backend.main:app --reload
 - `POST /api/usecase0/rag` : RAG 문서 저장
 - `GET /api/usecase1/material-options` : RAG 기반 자재 옵션
 - `POST /api/usecase2/plan` : Gemini+RAG+날씨 기반 계획 생성
+
+- 날씨 조회 기본 위치는 37.46N, 126.71E (site 설정에서 변경 가능)
