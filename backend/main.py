@@ -100,8 +100,7 @@ def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weat
         "previous_daily_report_rag": site_db.get("previous_daily_report"),
         "inventory_rag": site_db.get("inventory", {}),
         "weather_rag": weather_data,
-        "waterproof_sequences_rag": rag.get("waterproof_sequences", {}),
-        "waterproof_sequence_docs_rag": sequence_docs,
+        "waterproof_sequences_rag": {"retrieved_docs": sequence_docs},
     }
 
 

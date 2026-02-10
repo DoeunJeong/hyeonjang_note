@@ -8,7 +8,7 @@ import chromadb
 
 VECTOR_STORE_DIR = Path("data/vector_store")
 WATERPROOF_COLLECTION = "waterproof_sequences"
-DEFAULT_DOC_PATH = Path("docs/waterproof_sequence.md")
+DEFAULT_DOC_PATH = Path("data/rag_docs/waterproof_sequence.md")
 
 
 def _load_doc_text(doc_path: Path) -> str:
@@ -40,7 +40,7 @@ def index_waterproof_sequence_doc(doc_path: str = str(DEFAULT_DOC_PATH)) -> Dict
     client = chromadb.PersistentClient(path=str(VECTOR_STORE_DIR))
     collection = client.get_or_create_collection(name=WATERPROOF_COLLECTION)
 
-    emb = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
     vectors = emb.embed_documents(chunks)
 
     ids = [f"{path.stem}-{i}" for i in range(len(chunks))]
@@ -64,7 +64,7 @@ def search_waterproof_sequence(query: str, top_k: int = 3) -> Dict:
     client = chromadb.PersistentClient(path=str(VECTOR_STORE_DIR))
     collection = client.get_or_create_collection(name=WATERPROOF_COLLECTION)
 
-    emb = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
     query_vector = emb.embed_query(query)
     res = collection.query(query_embeddings=[query_vector], n_results=top_k)
 
