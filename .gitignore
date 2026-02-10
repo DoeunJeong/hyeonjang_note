@@ -1,5 +1,14 @@
 __pycache__/
 *.pyc
-data/
 venv/
 .env
+
+# Documentation and Research
+docs/
+
+# Field-specific sensitive data
+data/sites/
+data/vector_store/
+
+# Editor settings
+.vscode/

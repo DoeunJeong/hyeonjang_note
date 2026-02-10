@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 import logging
+from urllib.parse import quote, unquote
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +43,9 @@ def _write_json(path: Path, payload: Dict[str, Any]) -> None:
 
 def list_site_ids() -> List[str]:
     _ensure_dirs()
-    return sorted(path.stem for path in SITES_DIR.glob("*.json"))
+    # 파일명(URL 인코딩됨)을 디코딩하여 ID 반환
+    # 예: %EC%9D%B8%EC%B2%9C.json -> 인천
+    return sorted(unquote(path.stem) for path in SITES_DIR.glob("*.json"))
 
 
 def load_common_db() -> Dict[str, Any]:
@@ -63,7 +66,32 @@ def save_common_db(payload: Dict[str, Any]) -> None:
 
 def load_site_db(site_id: str) -> Dict[str, Any]:
     _ensure_dirs()
-    site_file = SITES_DIR / f"{site_id}.json"
+    # site_id를 파일명으로 쓸 때는 인코딩 (안전하게)
+    # 한글 -> %EC%...
+    safe_name = quote(site_id)
+    site_file = SITES_DIR / f"{safe_name}.json"
+    
+    # 하위 호환성: 인코딩 안 된 파일이 있다면 그것을 우선 (마이그레이션 전)
+    legacy_file = SITES_DIR / f"{site_id}.json"
+    if legacy_file.exists():
+        return _read_json(
+            legacy_file,
+            {
+                "site_id": site_id,
+                "workers": [],
+                "inventory": {},
+                "priority_areas": [],
+                "floor_area_map": {},
+                "area_progress": {},
+                "area_waterproof_methods": {},
+                "progress_before_app": None,
+                "previous_daily_report": None,
+                "latitude": 37.46,
+                "longitude": 126.71,
+                "daily_logs": [],
+            }
+        )
+
     return _read_json(
         site_file,
         {
@@ -85,5 +113,17 @@ def load_site_db(site_id: str) -> Dict[str, Any]:
 
 def save_site_db(site_id: str, payload: Dict[str, Any]) -> None:
     _ensure_dirs()
-    site_file = SITES_DIR / f"{site_id}.json"
+    # 저장할 때는 무조건 인코딩된 파일명 사용
+    safe_name = quote(site_id)
+    site_file = SITES_DIR / f"{safe_name}.json"
+    
+    # 만약 레거시 파일이 있다면 삭제 (중복 방지)
+    legacy_file = SITES_DIR / f"{site_id}.json"
+    if legacy_file.exists():
+        try:
+            legacy_file.unlink()
+        except Exception:
+            pass # 삭제 실패해도 무시
+            
+    print(f"DEBUG: Saving site db to {site_file} (Original ID: {site_id})")
     _write_json(site_file, payload)

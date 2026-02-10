@@ -107,6 +107,21 @@ class ProgressUpdateRequest(BaseModel):
     area_progress: Dict[str, float]
 
 
+class WorkItem(BaseModel):
+    worker: str
+    start: str
+    end: str
+    area: str
+    task: str
+    completed: bool = False
+    note: Optional[str] = None
+
+class DailyWorkResult(BaseModel):
+    site_id: str
+    date: str
+    actual_work: List[WorkItem]  # 완료 및 추가된 실제 작업 내역
+
+
 def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weather_data: Dict) -> Dict:
     rag = common_db.get("rag", {})
     sequence_query = ", ".join(payload.priority_areas or site_db.get("priority_areas", [])) or "방수 작업 순서"
@@ -149,6 +164,7 @@ def get_sites():
 @app.get("/api/usecase1/site/{site_id}")
 def get_site_status(site_id: str):
     site_db = load_site_db(site_id)
+    progress_data = calculate_site_progress(site_db)
     return {
         "site_id": site_id,
         "workers": site_db.get("workers", []),
@@ -158,6 +174,8 @@ def get_site_status(site_id: str):
         "area_progress": site_db.get("area_progress", {}),
         "area_waterproof_methods": site_db.get("area_waterproof_methods", {}),
         "progress_before_app": site_db.get("progress_before_app"),
+        "overall_progress": progress_data["total_progress"],
+        "area_progress_details": progress_data["area_details"]
     }
 
 
@@ -241,6 +259,7 @@ def initial_setup(payload: UserSetup, site_id: str = "default-site"):
 
 @app.post("/api/usecase2/plan")
 def create_plan(payload: DailyInput):
+    print(f"DEBUG: create_plan called with site_id='{payload.site_id}'")
     common_db = load_common_db()
     site_db = load_site_db(payload.site_id)
     # site_db["area_progress"]는 이미 이전 작업 결과가 로드됨
@@ -266,9 +285,18 @@ def create_plan(payload: DailyInput):
     llm_plan = run_planning_agent(rag_context)
     plan = {
         "date": datetime.now().strftime("%Y-%m-%d"),
+        "weather": {
+            "description": weather_data.get("summary", "날씨 정보 없음"),
+            "temp_min": "-",
+            "temp_max": "-",
+            "humidity": "-",
+            "precipitation_prob": "-"
+        },
         "scheduler_status": llm_plan.get("scheduler_status", "llm_generated"),
         "model": llm_plan.get("model", "gemini-2.0-flash"),
         "timeline": llm_plan.get("timeline", []),
+        "overview": llm_plan.get("overview", "AI가 생성한 작업 개요입니다."),
+        "guidelines": llm_plan.get("guidelines", ["안전 수칙을 준수하세요."]),
         "notes": llm_plan.get("notes", []),
         "rag_context": rag_context,
     }
@@ -288,4 +316,288 @@ def close_workday(completed: bool, note: Optional[str] = None):
         "completed": completed,
         "next_action": "edit_log" if not completed else "review_material_usage",
         "note": note,
+    }
+
+@app.post("/api/usecase3/work-result")
+def save_daily_work_result(payload: DailyWorkResult):
+    site_db = load_site_db(payload.site_id)
+    common_db = load_common_db()
+    
+    # 1. 해당 날짜의 로그 찾기 또는 생성
+    target_log = None
+    for log in site_db.get("daily_logs", []):
+        if log.get("plan", {}).get("date") == payload.date:
+            target_log = log
+            break
+    
+    if not target_log:
+        target_log = {"plan": {"date": payload.date}}
+        site_db["daily_logs"].append(target_log)
+    
+    # 2. 실제 작업 내역 저장
+    target_log["actual_work"] = [item.model_dump() for item in payload.actual_work]
+    
+    # 3. area_progress 자동 업데이트 알고리즘
+    current_progress = site_db.get("area_progress", {})
+    rag_areas = common_db.get("rag", {}).get("areas", {})
+    
+    for item in payload.actual_work:
+        if not item.completed:
+            continue
+            
+        # 작업 구역 매칭 (예: "101동 3층" -> "101동")
+        matched_area = None
+        for area_key in current_progress.keys():
+            if area_key in item.area:
+                matched_area = area_key
+                break
+        
+        if matched_area:
+            # 진척도 증가량 계산
+            increment = 2.0 # 기본 증가량 2%
+            
+            # 아파트 동인 경우 (층수 기반 계산)
+            if matched_area.endswith("동"):
+                # common.json에서 층수 정보 찾기
+                buildings = rag_areas.get("세대", {}).get("buildings", [])
+                floors = 26 # 기본값
+                for b in buildings:
+                    if b["name"] == matched_area:
+                        floors = b.get("floors", 26)
+                        break
+                # 한 층 작업 완료 시 약 1/floors 만큼 증가 (100 / floors)
+                increment = round(100 / floors, 1)
+            
+            elif matched_area == "지하주차장":
+                # 존(Zone) 기반 (총 10개 존 가정)
+                increment = 10.0
+            
+            elif matched_area == "상가":
+                increment = 5.0
+
+            # 진척도 업데이트 (최대 100%)
+            new_val = current_progress.get(matched_area, 0) + increment
+            current_progress[matched_area] = min(100.0, round(new_val, 1))
+
+    site_db["area_progress"] = current_progress
+    save_site_db(payload.site_id, site_db)
+    
+    return {
+        "saved": True, 
+        "date": payload.date, 
+        "work_count": len(payload.actual_work),
+        "updated_progress": current_progress
+    }
+
+
+@app.get("/api/usecase3/daily-report")
+def download_daily_report(site_id: str, date: str):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, Side
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+
+    site_db = load_site_db(site_id)
+    target_log = None
+    for log in site_db.get("daily_logs", []):
+        if log.get("plan", {}).get("date") == date:
+            target_log = log
+            break
+    
+    if not target_log:
+        return {"error": "해당 날짜의 로그를 찾을 수 없습니다."}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "작업일지"
+
+    # 기본 설정
+    thin_side = Side(style='thin')
+    border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    center_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    header_font = Font(size=14, bold=True)
+    title_font = Font(size=20, bold=True)
+
+    # 1. 제목 (작 업 일 지)
+    ws.merge_cells('A1:L2')
+    ws['A1'] = "작 업 일 지"
+    ws['A1'].font = title_font
+    ws['A1'].alignment = center_align
+    for row in ws['A1:L2']:
+        for cell in row:
+            cell.border = border
+
+    # 2. 기본 정보 영역
+    # 작성일, 반장명, 현장명
+    y, m, d = date.split('-')
+    ws.merge_cells('A3:F3')
+    ws['A3'] = f"■ 작성일 : 20{y[2:]}년 {m}월 {d}일"
+    ws['A3'].alignment = Alignment(horizontal='left')
+    
+    # 반장명 (무조건 정도은)
+    ws.merge_cells('A4:F4')
+    ws['A4'] = f"■ 반장명 : 정도은"
+    
+    ws.merge_cells('A5:F5')
+    ws['A5'] = f"■ 현장명 : {site_id}"
+
+    # 결재란 (우측 상단)
+    ws.merge_cells('G3:G5')
+    ws['G3'] = "결\n재"
+    ws['G3'].alignment = center_align
+    ws['G3'].border = border
+
+    ws.merge_cells('H3:I3')
+    ws['H3'] = "반 장"
+    ws.merge_cells('J3:K3')
+    ws['J3'] = "팀 장"
+    ws['L3'] = "소 장"
+    
+    for row in range(3, 6):
+        for col in range(7, 13):
+            ws.cell(row=row, column=col).border = border
+            ws.cell(row=row, column=col).alignment = center_align
+
+    # 3. 메인 테이블 헤더
+    ws.merge_cells('A6:C6')
+    ws['A6'] = "출 력 현 황"
+    ws.merge_cells('D6:L6')
+    ws['D6'] = "금 일 작 업 내 용"
+    
+    for col in range(1, 13):
+        ws.cell(row=6, column=col).border = border
+        ws.cell(row=6, column=col).alignment = center_align
+        ws.cell(row=6, column=col).font = Font(bold=True)
+
+    # 4. 좌측: 출력 현황 데이터
+    ws['A7'] = "순번"
+    ws.merge_cells('B7:C7')
+    ws['B7'] = "성 명"
+    
+    actual_work = target_log.get("actual_work", [])
+    
+    # 작업자 명단 추출 (쉼표로 구분된 경우 분리하여 개별 인원 파악)
+    raw_workers = []
+    for w in actual_work:
+        worker_str = w.get("worker", "")
+        if worker_str:
+            # "정고은, 정노은" 형태를 ["정고은", "정노은"]으로 분리
+            split_workers = [name.strip() for name in worker_str.split(",") if name.strip()]
+            raw_workers.extend(split_workers)
+            
+    # 중복 제거 및 정렬
+    attending_workers = sorted(list(set(raw_workers)))
+    
+    for i in range(15): # 최대 15명 표시
+        row_idx = 8 + i
+        ws[f'A{row_idx}'] = i + 1
+        ws.merge_cells(f'B{row_idx}:C{row_idx}')
+        if i < len(attending_workers):
+            ws[f'B{row_idx}'] = attending_workers[i]
+        
+        for col in range(1, 4):
+            ws.cell(row=row_idx, column=col).border = border
+            ws.cell(row=row_idx, column=col).alignment = center_align
+    
+    # 5. 우측: 작업 내용
+    ws.merge_cells('D7:L15')
+    
+    # 작업 내용 상세 리스트 (구역별로 그룹화하여 더 깔끔하게)
+    area_tasks = {}
+    for w in actual_work:
+        area = w.get('area', '공통')
+        task = w.get('task', '미지정 작업')
+        if area not in area_tasks:
+            area_tasks[area] = []
+        if task not in area_tasks[area]:
+            area_tasks[area].append(task)
+    
+    work_lines = []
+    for area, tasks in area_tasks.items():
+        work_lines.append(f"[{area}] {', '.join(tasks)}")
+    
+    start_time = min([w.get('start', '08:00') for w in actual_work]) if actual_work else "08:00"
+    end_time = max([w.get('end', '17:00') for w in actual_work]) if actual_work else "17:00"
+    
+    content_text = f"1. 작업시작: {start_time}\n2. 작업종료: {end_time}\n3. 작업내용:\n" + "\n".join(work_lines)
+    ws['D7'] = content_text
+    ws['D7'].alignment = Alignment(wrap_text=True, vertical='top')
+    for row in range(7, 16):
+        for col in range(4, 13):
+            ws.cell(row=row, column=col).border = border
+
+    # 6. 자재 및 장비 현황
+    ws.merge_cells('D16:H16')
+    ws['D16'] = "금일 자재 반입 현황"
+    ws.merge_cells('I16:L16')
+    ws['I16'] = "장비 반입/반출 현황"
+    
+    ws.merge_cells('D17:H22')
+    incoming = target_log.get("input", {}).get("incoming_materials", {})
+    mat_text = "\n".join([f"- {m}: {q}" for m, q in incoming.items()])
+    ws['D17'] = mat_text
+    ws['D17'].alignment = Alignment(wrap_text=True, vertical='top')
+    
+    ws.merge_cells('I17:L22')
+    # 장비 정보는 현재 없으므로 빈칸
+    
+    for row in range(16, 23):
+        for col in range(4, 13):
+            ws.cell(row=row, column=col).border = border
+            ws.cell(row=row, column=col).alignment = center_align
+
+    # 컬럼 너비 조정
+    for col in ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']:
+        ws.column_dimensions[col].width = 10
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    
+    filename = f"daily_report_{site_id}_{date}.xlsx"
+    encoded_filename = quote(filename)
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    
+    return StreamingResponse(output, headers=headers, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+def calculate_site_progress(site_db: Dict) -> Dict:
+    """현장의 전체 진척률을 계산하는 알고리즘"""
+    area_progress = site_db.get("area_progress", {})
+    floor_area_map = site_db.get("floor_area_map", {})
+    
+    if not area_progress:
+        return {"total_progress": 0, "area_details": {}}
+    
+    total_weighted_progress = 0
+    total_weight = 0
+    area_details = []
+
+    # 1. 면적 정보가 있는 경우 가중치 적용
+    # 2. 면적 정보가 없는 경우 균등 가중치 적용
+    for area_name, progress in area_progress.items():
+        # 면적 합산 (floor_area_map: {floor: {area: size}})
+        area_size = 0
+        for floor_data in floor_area_map.values():
+            if area_name in floor_data:
+                area_size += floor_data[area_name]
+        
+        # 면적 정보가 없으면 기본값 1 적용
+        weight = area_size if area_size > 0 else 1
+        
+        total_weighted_progress += progress * weight
+        total_weight += weight
+        
+        area_details.append({
+            "name": area_name,
+            "progress": progress,
+            "weight": weight
+        })
+
+    total_progress = round(total_weighted_progress / total_weight, 1) if total_weight > 0 else 0
+    
+    return {
+        "total_progress": total_progress,
+        "area_details": sorted(area_details, key=lambda x: x["name"])
     }

@@ -3,113 +3,205 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>방수 작업 플래너</title>
+    <title>현장노트 - AI 기반 방수 공사 관리</title>
     <link rel="stylesheet" href="styles.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <header>
-      <h1>방수 작업 플래너 (MVP)</h1>
-      <p>Usecase1 → Usecase2 + Gemini/LangChain 계획생성</p>
-    </header>
+    <div class="app-container">
+      <!-- 사이드바 네비게이션 -->
+      <nav class="sidebar">
+        <div class="logo">
+          <h2>🏗️ 현장노트</h2>
+          <p>AI Waterproof Planner</p>
+        </div>
+        <ul class="nav-menu">
+          <li class="nav-item active" data-target="setup-view">
+            <span class="icon">⚙️</span> 현장 설정
+          </li>
+          <li class="nav-item" data-target="planning-view">
+            <span class="icon">📅</span> 계획 수립
+          </li>
+          <li class="nav-item" data-target="closing-view">
+            <span class="icon">✅</span> 작업 마감
+          </li>
+        </ul>
+        <div class="nav-footer">
+          <p id="active-site-display">현장 미선택</p>
+        </div>
+      </nav>
 
-    <main>
-      <section>
-        <h2>Usecase1: 최초 설정</h2>
+      <!-- 메인 컨텐츠 영역 -->
+      <main class="content-area">
+        
+        <!-- 1. 현장 설정 뷰 -->
+        <section id="setup-view" class="view active">
+          <header class="view-header">
+            <h1>현장 기초 설정</h1>
+            <p>작업을 시작하기 전 현장과 인력, 자재를 확인하세요.</p>
+          </header>
 
-        <div class="split">
-          <div>
-            <label>현장 선택
-              <select id="site-select"></select>
-            </label>
-            <div class="inline-form">
-              <input id="new-site-id" placeholder="신규 현장 ID" />
-              <button type="button" id="create-site-btn">현장 생성/선택</button>
+          <div class="card-grid">
+            <!-- 현장 선택 카드 -->
+            <div class="card">
+              <h3>📍 현장 선택</h3>
+              <div class="form-group">
+                <select id="site-select" class="full-width"></select>
+              </div>
+              <div class="input-group">
+                <input id="new-site-id" placeholder="신규 현장명 입력" />
+                <button type="button" id="create-site-btn" class="btn-primary">신규 생성</button>
+              </div>
             </div>
 
-            <h3>작업 인력 추가</h3>
-            <div class="inline-form">
-              <input id="worker-name" placeholder="정OO" />
-              <button type="button" id="add-worker-btn">추가</button>
+            <!-- 인력 관리 카드 -->
+            <div class="card">
+              <h3>👷 작업 인력 관리</h3>
+              <div class="input-group">
+                <input id="worker-name" placeholder="이름 입력 (예: 홍길동)" />
+                <button type="button" id="add-worker-btn" class="btn-secondary">추가</button>
+              </div>
+              <div class="table-container small-height">
+                <table>
+                  <thead><tr><th>등록된 인력</th></tr></thead>
+                  <tbody id="worker-table-body"></tbody>
+                </table>
+              </div>
             </div>
 
-            <h3>현재 자재 입고</h3>
-            <div class="inline-form triple">
-              <select id="material-select"></select>
-              <input id="custom-material" placeholder="직접입력 자재명" disabled />
-              <input id="material-qty" type="number" step="0.1" placeholder="수량" />
-              <button type="button" id="add-inventory-btn">입고 추가</button>
+            <!-- 자재 관리 카드 -->
+            <div class="card full-width-card">
+              <h3>🧱 자재 입고 관리</h3>
+              <div class="input-group triple">
+                <select id="material-select"></select>
+                <input id="custom-material" placeholder="직접입력" disabled />
+                <input id="material-qty" type="number" step="0.1" placeholder="수량" />
+                <button type="button" id="add-inventory-btn" class="btn-secondary">입고</button>
+              </div>
+              <div class="table-container small-height">
+                <table>
+                  <thead><tr><th>자재명</th><th>현재고</th></tr></thead>
+                  <tbody id="inventory-table-body"></tbody>
+                </table>
+              </div>
             </div>
-
-            <p class="hint">* 앱 사용 이전 작업 진행도는 구조만 유지하고 UI 입력은 보류합니다.</p>
-            <button type="button" id="go-usecase2-btn">Usecase2로 이동</button>
           </div>
 
-          <div>
-            <h3>현재 작업 인력 현황</h3>
-            <div class="table-container">
-              <table>
+          <div class="action-bar right">
+            <button type="button" id="go-planning-btn" class="btn-primary large">작업 계획하러 가기 →</button>
+          </div>
+        </section>
+
+        <!-- 2. 계획 수립 뷰 -->
+        <section id="planning-view" class="view">
+          <header class="view-header">
+            <h1>금일 작업 계획</h1>
+            <p>AI가 날씨와 현장 상황을 분석하여 최적의 계획을 제안합니다.</p>
+          </header>
+
+          <!-- 현장 진척도 시각화 카드 -->
+          <div class="card">
+            <h3>📊 현장 공정 진행 현황</h3>
+            <div id="progress-display" class="progress-section">
+              <div class="overall-progress-container">
+                <div class="progress-label">
+                  <span>전체 공정률</span>
+                  <span id="overall-percent">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                  <div id="overall-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+              </div>
+              <div id="area-progress-list" class="area-progress-grid">
+                <!-- 구역별 진척도가 여기에 동적으로 추가됨 -->
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>📝 계획 입력</h3>
+            <form id="plan-form" onsubmit="return false;">
+              <label>투입 인력 선택</label>
+              <div id="worker-checkboxes" class="checkbox-group"></div>
+
+              <label style="margin-top: 15px;">우선 작업 구역 (선택사항)</label>
+              <input id="areas" placeholder="예: 104동, 105동 (비워두면 AI가 추천)" class="full-width" />
+              
+              <div class="action-bar center" style="margin-top: 20px;">
+                <button type="button" id="generate-plan-btn" class="btn-ai large">✨ AI 작업 계획 생성</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="timeline-container" class="card hidden">
+            <h3>📅 AI 제안 타임라인</h3>
+            <div id="timeline"></div>
+            <div class="action-bar right" style="margin-top: 15px;">
+              <button type="button" id="go-closing-btn" class="btn-primary">작업 시작 및 마감으로 이동 →</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. 작업 마감 뷰 -->
+        <section id="closing-view" class="view">
+          <header class="view-header">
+            <h1>작업 마감 및 일지</h1>
+            <p>오늘 수행한 작업을 체크하고 노무대장을 관리하세요.</p>
+          </header>
+
+          <div class="card">
+            <h3>✅ 작업 수행 내역 (체크리스트)</h3>
+            <div id="planned-work-list" class="table-container">
+              <table id="work-checklist-table">
                 <thead>
-                  <tr><th>이름</th></tr>
+                  <tr>
+                    <th style="width: 80px;">작업자</th>
+                    <th style="width: 100px;">시간</th>
+                    <th style="width: 100px;">구역</th>
+                    <th>작업내용</th>
+                    <th style="width: 50px;">완료</th>
+                    <th style="width: 150px;">비고</th>
+                    <th style="width: 60px;">관리</th>
+                  </tr>
                 </thead>
-                <tbody id="worker-table-body"></tbody>
+                <tbody id="closing-table-body"></tbody>
               </table>
             </div>
+          </div>
 
-            <h3>현재 자재 재고</h3>
-            <div class="table-container">
-              <table>
-                <thead>
-                  <tr><th>자재</th><th>수량</th></tr>
-                </thead>
-                <tbody id="inventory-table-body"></tbody>
-              </table>
+          <div class="card bg-light">
+            <h3>➕ 추가/돌발 작업 등록</h3>
+            <div class="input-group work-add-group">
+              <select id="edit-worker" style="flex:1;"><option value="">작업자</option></select>
+              <input type="text" id="edit-start" placeholder="08:00" style="width: 70px;">
+              <input type="text" id="edit-end" placeholder="17:00" style="width: 70px;">
+              <select id="edit-area" style="flex:1;">
+                <option value="">구역</option>
+                <option value="세대">세대</option>
+                <option value="지하주차장">지하주차장</option>
+                <option value="상가">상가</option>
+              </select>
+              <input type="text" id="edit-task" placeholder="작업 내용" style="flex:2;">
+              <button type="button" id="add-work-item-btn" class="btn-secondary">추가</button>
             </div>
           </div>
-        </div>
-      </section>
 
-      <section id="usecase2-section" class="hidden">
-        <h2>Usecase2: 작업 전 입력</h2>
-        
-        <div id="progress-summary" style="display:none; background:#f9f9f9; padding:10px; margin-bottom:15px; border-left:4px solid #0066cc;">
-          <h4>📊 어제까지의 진행도</h4>
-          <div id="progress-details"></div>
-        </div>
-
-        <form id="plan-form">
-          <p id="active-site-text"></p>
-          <label>오늘 작업 인력 선택</label>
-          <div id="worker-checkboxes"></div>
-
-          <label>우선 작업 구역(쉼표 구분)
-            <input id="areas" placeholder="세대,상가" />
-          </label>
-          <button type="submit">오늘의 계획 생성 (Gemini + RAG + 자동 날씨)</button>
-        </form>
-      </section>
-
-      <section>
-        <h2>AI 작업 타임라인</h2>
-        <div id="timeline"></div>
-        
-        <details id="rag-debug-section" style="margin-top: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
-          <summary style="cursor: pointer; font-weight: bold; color: #555;">🔍 AI/RAG 디버그 정보 (클릭하여 펼치기)</summary>
-          <div id="rag-debug-content" style="margin-top: 10px; font-family: monospace; white-space: pre-wrap; font-size: 12px; background: #f4f4f4; padding: 10px; max-height: 400px; overflow-y: auto;">
-            계획 생성 후 이곳에 RAG 컨텍스트와 LLM 응답 정보가 표시됩니다.
+          <div class="action-bar right">
+            <button type="button" id="save-work-result-btn" class="btn-success large">💾 금일 작업 일지 저장</button>
+            <button type="button" id="download-report-btn" class="btn-outline large">📄 작업일지(양식) 다운로드</button>
           </div>
-        </details>
-      </section>
 
-      <section id="usecase3-section" class="hidden">
-        <h2>Usecase 3: 작업 종료 및 진행도 업데이트</h2>
-        <form id="progress-update-form">
-          <p>오늘 작업 결과를 반영하여 각 구역의 최종 진행도(%)를 업데이트하세요.</p>
-          <div id="progress-inputs"></div>
-          <button type="submit">최종 진행도 저장</button>
-        </form>
-      </section>
-    </main>
+          <div class="divider"></div>
 
+          <div class="card">
+            <h3>📊 노무 관리</h3>
+            <p class="hint">17:00 이후 종료 작업은 1.5공수, 그 외 1.0공수로 자동 산출됩니다.</p>
+            <button type="button" id="download-manpower-btn" class="btn-outline">📥 노무대장 엑셀 다운로드</button>
+          </div>
+        </section>
+
+      </main>
+    </div>
     <script src="app.js"></script>
   </body>
 </html>

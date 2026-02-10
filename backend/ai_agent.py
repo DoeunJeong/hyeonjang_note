@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class PlanItem(BaseModel):
-    worker: str
+    workers: List[str]
     start: str
     end: str
     area: str
@@ -19,6 +19,8 @@ class PlanItem(BaseModel):
 class PlanOutput(BaseModel):
     scheduler_status: str = "llm_generated"
     model: str = "gemini-2.0-flash"
+    overview: str = Field(default="AI가 생성한 오늘의 작업 개요입니다.")
+    guidelines: List[str] = Field(default_factory=lambda: ["안전 수칙 준수", "품질 관리 철저"])
     timeline: List[PlanItem] = Field(default_factory=list)
     notes: List[str] = Field(default_factory=list)
 
@@ -45,7 +47,7 @@ def _fallback_plan(context: Dict) -> Dict:
             area = areas[(worker_idx + i) % len(areas)]
             timeline.append(
                 {
-                    "worker": worker,
+                    "workers": [worker],
                     "start": start,
                     "end": next_time,
                     "area": area,
@@ -56,6 +58,8 @@ def _fallback_plan(context: Dict) -> Dict:
     return {
         "scheduler_status": "llm_fallback",
         "model": "fallback",
+        "overview": "기본 규칙에 기반한 작업 배정안입니다.",
+        "guidelines": ["표준 안전 수칙 준수", "작업 전 보호구 착용 확인"],
         "timeline": timeline,
         "notes": ["GEMINI_API_KEY 미설정 또는 LLM 호출 실패로 기본안을 반환했습니다."],
     }
@@ -106,7 +110,7 @@ def run_planning_agent(context: Dict) -> Dict:
 **입력 데이터:**
 - worker_reg: 오늘 투입 인력
 - priority_areas_rag: 우선 작업 구역
-- all_areas_rag: 전체 작업 구역
+- all_areas_rag: 전체 작업 구역 (동/층 정보 포함)
 - floor_area_map_rag: 층별 면적
 - area_progress_rag: 어제까지의 작업 완료도 (%)
 - area_waterproof_methods_rag: 구역별 방수 방법
@@ -115,15 +119,15 @@ def run_planning_agent(context: Dict) -> Dict:
 - inventory_rag: 현재 자재 재고
 - weather_rag: 시간별 날씨 정보 (기온, 습도, 강수확률)
 - waterproof_sequences_rag: 방수 작업 순서(RAG)
-- time_slots: 07:10~16:30 30분 단위 시간 슬롯
+- time_slots: 08:00~17:00 30분 단위 시간 슬롯
 
-**작업 규칙:**
-1. 작업자는 worker_reg에만 있는 인력만 사용
-2. 배정은 30분 단위 time_slots만 사용
-3. 각 작업자는 독립적으로 배정
-4. area_progress_rag를 참고하여 완료되지 않은 구역에 우선 배정
-5. previous_daily_report_rag의 주의사항 반영
-6. weather_rag의 강수확률 고 고려 (강수확률 >50% 시 옥외 작업 최소화)
+**작업 배정 규칙:**
+1. **구체적 위치 명시**: "세대" 대신 **"101동 3층"**, "101동 4층"과 같이 구체적인 위치를 배정해라. (1048세대, 101~110동 정보를 참고)
+2. **동일 작업 그룹핑**: 여러 작업자가 같은 구역에서 같은 작업을 해도 된다. (예: 정고은, 정노은 -> 101동 3층 바탕면 정리)
+3. **간결한 작업명**: 작업명에 코드(M01, A01 등)가 있다면 괄호 설명은 제거하고 핵심만 적어라. (예: "M01 노출 우레탄" (O), "M01(노출 우레탄...)" (X))
+4. **시간 연속성**: 작업은 가능한 끊기지 않고 연속되게 배정해라.
+5. **날씨 고려**: 강수확률이 높으면 실내 작업 위주로 배정해라.
+6. **overview 및 guidelines**: 오늘의 전체적인 작업 전략과 안전/품질 주의사항을 구체적으로 작성해라.
 
 {format_instructions}
 """,
