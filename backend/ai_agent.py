@@ -23,7 +23,7 @@ class PlanOutput(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-def _build_time_slots(start: str = "07:10", end: str = "16:30") -> List[str]:
+def _build_time_slots(start: str = "08:00", end: str = "17:00") -> List[str]:
     slots: List[str] = []
     current = datetime.strptime(start, "%H:%M")
     end_time = datetime.strptime(end, "%H:%M")
@@ -78,8 +78,13 @@ def _compact_payload(context: Dict) -> Dict:
 
 
 def run_planning_agent(context: Dict) -> Dict:
-    if not os.getenv("GEMINI_API_KEY"):
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
         return _fallback_plan(context)
+
+    # Ensure the API key is set for LangChain if it was found as GEMINI_API_KEY
+    if not os.getenv("GOOGLE_API_KEY") and api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
 
     try:
         from langchain_core.output_parsers import PydanticOutputParser

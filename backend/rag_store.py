@@ -8,7 +8,10 @@ import chromadb
 
 VECTOR_STORE_DIR = Path("data/vector_store")
 WATERPROOF_COLLECTION = "waterproof_sequences"
-DEFAULT_DOC_PATH = Path("data/rag_docs/waterproof_sequence.md")
+
+# 절대 경로로 명확하게 지정
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_DOC_PATH = BASE_DIR / "data" / "rag_docs" / "waterproof_sequences.md"
 
 
 def _load_doc_text(doc_path: Path) -> str:
@@ -25,46 +28,65 @@ def _chunk_text(text: str, chunk_size: int = 600) -> List[str]:
 
 
 def index_waterproof_sequence_doc(doc_path: str = str(DEFAULT_DOC_PATH)) -> Dict:
-    if not os.getenv("GEMINI_API_KEY"):
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
         return {"indexed": False, "reason": "missing_GEMINI_API_KEY"}
 
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-    path = Path(doc_path)
-    text = _load_doc_text(path)
-    chunks = _chunk_text(text)
-    if not chunks:
-        return {"indexed": False, "reason": "empty_document"}
-
-    VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(VECTOR_STORE_DIR))
-    collection = client.get_or_create_collection(name=WATERPROOF_COLLECTION)
-
-    emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
-    vectors = emb.embed_documents(chunks)
-
-    ids = [f"{path.stem}-{i}" for i in range(len(chunks))]
-    metadatas = [{"source": str(path), "chunk_index": i} for i in range(len(chunks))]
+    if api_key and not os.getenv("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = api_key
 
     try:
-        collection.delete(ids=ids)
-    except Exception:
-        pass
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-    collection.add(ids=ids, documents=chunks, embeddings=vectors, metadatas=metadatas)
-    return {"indexed": True, "collection": WATERPROOF_COLLECTION, "chunks": len(chunks), "source": str(path)}
+        path = Path(doc_path)
+        if not path.is_absolute():
+            # 상대 경로인 경우 프로젝트 루트 기준으로 변경 (data 폴더는 backend 상위의 data)
+            base_dir = Path(__file__).resolve().parent.parent
+            path = base_dir / doc_path
+
+        text = _load_doc_text(path)
+        chunks = _chunk_text(text)
+        if not chunks:
+            return {"indexed": False, "reason": "empty_document"}
+
+        VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(VECTOR_STORE_DIR))
+        collection = client.get_or_create_collection(name=WATERPROOF_COLLECTION)
+
+        emb = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+        vectors = emb.embed_documents(chunks)
+
+        ids = [f"{path.stem}-{i}" for i in range(len(chunks))]
+        metadatas = [{"source": str(path), "chunk_index": i} for i in range(len(chunks))]
+
+        try:
+            collection.delete(ids=ids)
+        except Exception:
+            pass
+
+        collection.add(ids=ids, documents=chunks, embeddings=vectors, metadatas=metadatas)
+        return {"indexed": True, "collection": WATERPROOF_COLLECTION, "chunks": len(chunks), "source": str(path)}
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return {"indexed": False, "reason": str(e), "trace": traceback.format_exc()}
 
 
 def search_waterproof_sequence(query: str, top_k: int = 3) -> Dict:
-    if not os.getenv("GEMINI_API_KEY"):
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if not api_key:
         return {"items": [], "reason": "missing_GEMINI_API_KEY"}
+
+    if api_key and not os.getenv("GOOGLE_API_KEY"):
+        os.environ["GOOGLE_API_KEY"] = api_key
 
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
     client = chromadb.PersistentClient(path=str(VECTOR_STORE_DIR))
     collection = client.get_or_create_collection(name=WATERPROOF_COLLECTION)
 
-    emb = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+    emb = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     query_vector = emb.embed_query(query)
     res = collection.query(query_embeddings=[query_vector], n_results=top_k)
 

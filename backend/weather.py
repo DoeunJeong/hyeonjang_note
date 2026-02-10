@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 from typing import Dict, List
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -71,8 +72,16 @@ def fetch_today_weather(latitude: float, longitude: float) -> Dict:
     query = urlencode(request_spec["params"])
     url = f"{OPEN_METEO_FORECAST_URL}?{query}"
 
-    with urlopen(url, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        # SSL 인증서 문제 우회를 위한 컨텍스트 설정
+        context = ssl._create_unverified_context()
+        with urlopen(url, context=context, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as e:
+        # 실패 시 예외를 다시 발생시켜 상위 호출자(create_plan)에서 fallback 처리하도록 함
+        # 로그를 남길 수도 있음
+        print(f"Weather fetch failed: {e}")
+        raise e
 
     hourly_rows = _hourly_weather_rows(payload.get("hourly", {}))
     return {

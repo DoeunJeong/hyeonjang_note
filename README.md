@@ -2,11 +2,46 @@
 
 ## 실행
 
+### 1. 가상환경 생성 및 활성화
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Mac/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 2. 패키지 설치
 ```bash
 pip install -r requirements.txt
-export GEMINI_API_KEY=your_key
-uvicorn backend.main:app --reload
 ```
+
+### 3. 환경변수 설정
+- `.env` 파일을 생성하거나 환경변수를 직접 설정합니다.
+```bash
+# Windows PowerShell
+$env:GOOGLE_API_KEY="your_key"
+
+# Mac/Linux
+export GEMINI_API_KEY="your_key"
+```
+
+### 4. 서버 실행
+- **백엔드** (가상환경 변경 감지 제외 옵션 포함)
+```bash
+uvicorn backend.main:app --reload --reload-dir backend --reload-dir data
+```
+- **프론트엔드** (새 터미널에서 실행)
+```bash
+cd frontend
+python -m http.server 5500
+```
+
+## 접속 주소
+- 백엔드 API: http://localhost:8000
+- 프론트엔드: http://localhost:5500
 
 ## DB 구조(현재)
 - 공통 DB: `data/common.json`

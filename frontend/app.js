@@ -68,26 +68,55 @@ function renderTimeline(plan) {
   status.textContent = `스케줄러 상태: ${plan.scheduler_status} / 모델: ${plan.model || "-"}`;
   timeline.appendChild(status);
 
+  // 작업자 목록 (세로축)
   const workers = [...new Set(plan.timeline.map((x) => x.worker))];
-  const times = buildTimeSlots();
+  if (workers.length === 0) {
+    // 만약 timeline에 작업자가 없으면(Fallback 등), worker_reg에서 가져오거나 해야 함
+    // 하지만 보통 fallback이라도 timeline은 있으므로 넘어감
+  }
+  
+  // 시간 슬롯 (가로축 헤더) - 백엔드와 동일하게 08:00 ~ 16:30 (30분 단위)
+  const times = buildTimeSlots("08:00", "17:00"); 
 
+  const tableContainer = document.createElement("div");
+  tableContainer.className = "table-container"; // 스크롤 가능하게
+  
   const table = document.createElement("table");
   table.className = "plan-grid";
 
+  // 헤더: 시간 표시
   const thead = document.createElement("thead");
   const headerRow = document.createElement("tr");
-  headerRow.innerHTML = `<th>시간</th>${workers.map((w) => `<th>${w}</th>`).join("")}`;
+  headerRow.innerHTML = `<th>작업자</th>${times.map((t) => `<th>${t}</th>`).join("")}`;
   thead.appendChild(headerRow);
 
+  // 바디: 작업자별 행
   const tbody = document.createElement("tbody");
-  times.forEach((time) => {
+  
+  // 만약 timeline에 없는 작업자라도 입력된 작업자라면 표시하고 싶다면? 
+  // 일단 plan.timeline에 있는 작업자 기준.
+  workers.forEach((worker) => {
     const tr = document.createElement("tr");
-    const cells = [`<td class="time-cell">${time}</td>`];
-    workers.forEach((worker) => {
-      const block = plan.timeline.find((x) => x.worker === worker && x.start === time);
-      cells.push(
-        `<td class="task-cell" contenteditable="true">${block ? `${block.area} / ${block.task}` : ""}</td>`,
-      );
+    const cells = [`<td style="font-weight:bold;">${worker}</td>`];
+    
+    times.forEach((time) => {
+      // 해당 작업자 & 해당 시간의 작업 찾기 (범위 포함)
+      // 시간 문자열 비교 (예: "08:30" >= "08:00" && "08:30" < "11:00")
+      const block = plan.timeline.find((x) => x.worker === worker && time >= x.start && time < x.end);
+      
+      if (block) {
+        // 시작 시간인 경우에만 텍스트 표시 (또는 매번 표시하되 스타일 조정)
+        const isStart = time === block.start;
+        const cellContent = isStart 
+          ? `<strong>${block.area}</strong><br><span style="font-size:0.8em">${block.task}</span>` 
+          : `<span style="color:#aaa; font-size:0.7em;">(계속)</span>`;
+          
+        cells.push(
+          `<td class="task-cell" contenteditable="true" title="${block.task} (${block.start}~${block.end})">${cellContent}</td>`
+        );
+      } else {
+        cells.push(`<td class="empty-cell" contenteditable="true"></td>`);
+      }
     });
     tr.innerHTML = cells.join("");
     tbody.appendChild(tr);
@@ -95,7 +124,26 @@ function renderTimeline(plan) {
 
   table.appendChild(thead);
   table.appendChild(tbody);
-  timeline.appendChild(table);
+  tableContainer.appendChild(table);
+  timeline.appendChild(tableContainer);
+
+  // 디버그 정보 표시
+  renderDebugInfo(plan);
+}
+
+function renderDebugInfo(plan) {
+  const debugContent = document.getElementById("rag-debug-content");
+  if (!debugContent) return;
+  
+  // 중요 정보만 추출하거나 전체 표시
+  const debugData = {
+    scheduler_status: plan.scheduler_status,
+    model: plan.model,
+    rag_context: plan.rag_context, // 여기에 검색된 문서 등이 포함됨
+    full_timeline: plan.timeline
+  };
+  
+  debugContent.textContent = JSON.stringify(debugData, null, 2);
 }
 
 async function loadSites() {
@@ -246,13 +294,23 @@ document.getElementById("go-usecase2-btn").addEventListener("click", async () =>
     alert("현장을 먼저 선택하세요.");
     return;
   }
-  await loadSiteStatus(activeSiteId);
-  document.getElementById("usecase2-section").classList.remove("hidden");
-  document.getElementById("usecase2-section").scrollIntoView({ behavior: "smooth" });
+
+  try {
+    await loadSiteStatus(activeSiteId);
+  } catch (error) {
+    console.error("현장 정보 로딩 실패:", error);
+    // 에러가 나더라도 다음 단계로 이동은 허용 (필요한 데이터가 없을 수 있음을 감안)
+  }
+
+  const section = document.getElementById("usecase2-section");
+  section.classList.remove("hidden");
+  section.scrollIntoView({ behavior: "smooth" });
 });
 
 document.getElementById("plan-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const originalText = submitBtn.textContent;
 
   const selectedWorkers = [...document.querySelectorAll('#worker-checkboxes input:checked')].map(
     (input) => input.value,
@@ -263,46 +321,58 @@ document.getElementById("plan-form").addEventListener("submit", async (e) => {
     return;
   }
 
-  const payload = {
-    site_id: activeSiteId,
-    selected_workers: selectedWorkers,
-    incoming_materials: {},
-    priority_areas: parseCSV(document.getElementById("areas").value),
-  };
+  // 로딩 상태 표시
+  submitBtn.disabled = true;
+  submitBtn.textContent = "계획 생성 중... (AI 분석 중) ⏳";
 
-  const data = await fetchJSON(`${API_BASE}/api/usecase2/plan`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const payload = {
+      site_id: activeSiteId,
+      selected_workers: selectedWorkers,
+      incoming_materials: {},
+      priority_areas: parseCSV(document.getElementById("areas").value),
+    };
 
-  renderTimeline(data.plan);
+    const data = await fetchJSON(`${API_BASE}/api/usecase2/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  // 작업 종료 UI 표시 로직
-  const usecase3Section = document.getElementById("usecase3-section");
-  const progressInputs = document.getElementById("progress-inputs");
-  progressInputs.innerHTML = ""; // 이전 내용 초기화
+    renderTimeline(data.plan);
 
-  // 계획 생성 시 참고했던 area_progress와 전체 구역 목록을 가져옴
-  const currentProgress = data.plan.rag_context.area_progress_rag || {};
-  const allAreas = data.plan.rag_context.all_areas_rag || [];
+    // 작업 종료 UI 표시 로직
+    const usecase3Section = document.getElementById("usecase3-section");
+    const progressInputs = document.getElementById("progress-inputs");
+    progressInputs.innerHTML = ""; // 이전 내용 초기화
 
-  if (allAreas.length > 0) {
-    allAreas.forEach(area => {
-      const currentVal = Math.round(currentProgress[area] || 0);
-      const div = document.createElement("div");
-      // 각 구역별로 진행도를 입력할 수 있는 input 필드 생성
-      div.innerHTML = `
+    // 계획 생성 시 참고했던 area_progress와 전체 구역 목록을 가져옴
+    const currentProgress = data.plan.rag_context.area_progress_rag || {};
+    const allAreas = data.plan.rag_context.all_areas_rag || [];
+
+    if (allAreas.length > 0) {
+      allAreas.forEach(area => {
+        const currentVal = Math.round(currentProgress[area] || 0);
+        const div = document.createElement("div");
+        // 각 구역별로 진행도를 입력할 수 있는 input 필드 생성
+        div.innerHTML = `
         <label for="progress-${area}" style="display: inline-block; width: 120px;">${area}</label>
         <input type="number" id="progress-${area}" value="${currentVal}" min="0" max="100" step="1" style="width: 80px;">
         <span>%</span>
       `;
-      progressInputs.appendChild(div);
-    });
+        progressInputs.appendChild(div);
+      });
 
-    // Usecase 3 섹션을 화면에 표시하고 스크롤
-    usecase3Section.classList.remove("hidden");
-    usecase3Section.scrollIntoView({ behavior: "smooth" });
+      // Usecase 3 섹션을 화면에 표시하고 스크롤
+      usecase3Section.classList.remove("hidden");
+      usecase3Section.scrollIntoView({ behavior: "smooth" });
+    }
+  } catch (error) {
+    console.error("Plan creation failed:", error);
+    alert("계획 생성에 실패했습니다. 다시 시도해주세요.");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
   }
 });
 

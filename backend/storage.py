@@ -3,8 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Dict, List
+import logging
 
-DATA_DIR = Path("data")
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 현재 파일(backend/storage.py)의 상위 폴더(backend)의 상위 폴더(root) 기준 data 폴더
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
 COMMON_FILE = DATA_DIR / "common.json"
 SITES_DIR = DATA_DIR / "sites"
 
@@ -16,8 +23,17 @@ def _ensure_dirs() -> None:
 
 def _read_json(path: Path, default: Dict[str, Any]) -> Dict[str, Any]:
     if not path.exists():
+        logger.warning(f"File not found: {path}. Returning default.")
         return default
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        content = path.read_text(encoding="utf-8")
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from {path}: {e}")
+        return default
+    except Exception as e:
+        logger.error(f"Error reading file {path}: {e}")
+        return default
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:

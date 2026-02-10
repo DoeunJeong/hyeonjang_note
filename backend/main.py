@@ -1,8 +1,21 @@
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
+
+# .env 파일 명시적 로드
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(dotenv_path=BASE_DIR / ".env")
+
+# 디버깅: API 키 로드 확인
+print(f"DEBUG: GEMINI_API_KEY loaded? {bool(os.getenv('GEMINI_API_KEY'))}")
+print(f"DEBUG: GOOGLE_API_KEY loaded? {bool(os.getenv('GOOGLE_API_KEY'))}")
+
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from backend.ai_agent import run_planning_agent
@@ -26,6 +39,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/")
+def read_root():
+    return {"message": "Waterproof Work Planner API is running. Visit /docs for API documentation."}
 
 DEFAULT_MATERIAL_OPTIONS = [
     "우레탄방수재",
@@ -142,6 +165,11 @@ def get_site_status(site_id: str):
 def get_material_options():
     common_db = load_common_db()
     rag_materials = common_db.get("rag", {}).get("materials", [])
+    
+    # materials가 객체 리스트인 경우 name 속성만 추출
+    if rag_materials and isinstance(rag_materials[0], dict):
+        rag_materials = [m.get("name", "Unknown") for m in rag_materials]
+
     return {"materials": rag_materials or DEFAULT_MATERIAL_OPTIONS}
 
 
@@ -245,6 +273,10 @@ def create_plan(payload: DailyInput):
         "rag_context": rag_context,
     }
 
+    # 같은 날짜의 기존 로그가 있다면 제거 (덮어쓰기)
+    today_str = plan["date"]
+    site_db["daily_logs"] = [log for log in site_db.get("daily_logs", []) if log.get("plan", {}).get("date") != today_str]
+    
     site_db["daily_logs"].append({"input": payload.model_dump(), "plan": plan})
     save_site_db(payload.site_id, site_db)
     return {"site_id": payload.site_id, "plan": plan, "inventory": site_db["inventory"]}

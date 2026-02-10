@@ -46,20 +46,24 @@
 
           <div>
             <h3>현재 작업 인력 현황</h3>
-            <table>
-              <thead>
-                <tr><th>이름</th></tr>
-              </thead>
-              <tbody id="worker-table-body"></tbody>
-            </table>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr><th>이름</th></tr>
+                </thead>
+                <tbody id="worker-table-body"></tbody>
+              </table>
+            </div>
 
             <h3>현재 자재 재고</h3>
-            <table>
-              <thead>
-                <tr><th>자재</th><th>수량</th></tr>
-              </thead>
-              <tbody id="inventory-table-body"></tbody>
-            </table>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr><th>자재</th><th>수량</th></tr>
+                </thead>
+                <tbody id="inventory-table-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -87,6 +91,13 @@
       <section>
         <h2>AI 작업 타임라인</h2>
         <div id="timeline"></div>
+        
+        <details id="rag-debug-section" style="margin-top: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+          <summary style="cursor: pointer; font-weight: bold; color: #555;">🔍 AI/RAG 디버그 정보 (클릭하여 펼치기)</summary>
+          <div id="rag-debug-content" style="margin-top: 10px; font-family: monospace; white-space: pre-wrap; font-size: 12px; background: #f4f4f4; padding: 10px; max-height: 400px; overflow-y: auto;">
+            계획 생성 후 이곳에 RAG 컨텍스트와 LLM 응답 정보가 표시됩니다.
+          </div>
+        </details>
       </section>
 
       <section id="usecase3-section" class="hidden">

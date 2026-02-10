@@ -82,6 +82,9 @@ td {
 }
 .plan-grid th {
   background: #eef5fc;
+  min-width: 60px;
+  text-align: center;
+  font-weight: bold;
 }
 .time-cell {
   font-weight: 700;
@@ -89,5 +92,33 @@ td {
 }
 .task-cell {
   background: #fff5a8;
-  min-width: 150px;
+  min-width: 120px;
+  font-size: 0.9em;
+  padding: 4px;
+  text-align: center;
+  border: 1px solid #ddd;
+}
+.empty-cell {
+  background: #ffffff;
+  min-width: 120px;
+  border: 1px solid #ddd;
+}
+
+/* 추가: 테이블 스크롤 처리 */
+.table-container {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+}
+.table-container table {
+  margin-bottom: 0;
+  border: none;
+}
+.table-container th {
+  position: sticky;
+  top: 0;
+  background: #eef5fc;
+  z-index: 10;
+  border-top: none;
 }
