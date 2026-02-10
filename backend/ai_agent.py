@@ -23,7 +23,7 @@ class PlanOutput(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-def _build_time_slots(start: str = "08:00", end: str = "17:00") -> List[str]:
+def _build_time_slots(start: str = "07:10", end: str = "16:30") -> List[str]:
     slots: List[str] = []
     current = datetime.strptime(start, "%H:%M")
     end_time = datetime.strptime(end, "%H:%M")
@@ -97,10 +97,29 @@ def run_planning_agent(context: Dict) -> Dict:
                 "system",
                 """
 너는 방수 현장 작업계획 전문가다.
-입력 변수 worker_reg, priority_areas_rag, all_areas_rag, floor_area_map_rag, area_progress_rag,
-area_waterproof_methods_rag, previous_progress_rag, previous_daily_report_rag, inventory_rag,
-weather_rag, waterproof_sequences_rag, time_slots를 모두 활용해 계획한다.
-규칙: 작업자는 worker_reg만 사용, 30분 단위 time_slots만 사용, 작업자별 독립 배정.
+
+**입력 데이터:**
+- worker_reg: 오늘 투입 인력
+- priority_areas_rag: 우선 작업 구역
+- all_areas_rag: 전체 작업 구역
+- floor_area_map_rag: 층별 면적
+- area_progress_rag: 어제까지의 작업 완료도 (%)
+- area_waterproof_methods_rag: 구역별 방수 방법
+- previous_progress_rag: 어제까지의 상세 진행도
+- previous_daily_report_rag: 어제 일일 보고서 (주의사항, 이슈)
+- inventory_rag: 현재 자재 재고
+- weather_rag: 시간별 날씨 정보 (기온, 습도, 강수확률)
+- waterproof_sequences_rag: 방수 작업 순서(RAG)
+- time_slots: 07:10~16:30 30분 단위 시간 슬롯
+
+**작업 규칙:**
+1. 작업자는 worker_reg에만 있는 인력만 사용
+2. 배정은 30분 단위 time_slots만 사용
+3. 각 작업자는 독립적으로 배정
+4. area_progress_rag를 참고하여 완료되지 않은 구역에 우선 배정
+5. previous_daily_report_rag의 주의사항 반영
+6. weather_rag의 강수확률 고 고려 (강수확률 >50% 시 옥외 작업 최소화)
+
 {format_instructions}
 """,
             ),

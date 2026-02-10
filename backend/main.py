@@ -77,7 +77,6 @@ class DailyInput(BaseModel):
     selected_workers: List[str]
     incoming_materials: Dict[str, float] = Field(default_factory=dict)
     priority_areas: List[str] = Field(default_factory=list)
-    weather_summary: Optional[str] = None
 
 
 class ProgressUpdateRequest(BaseModel):
@@ -96,7 +95,7 @@ def _build_rag_context(common_db: Dict, site_db: Dict, payload: DailyInput, weat
         "floor_area_map_rag": site_db.get("floor_area_map", {}),
         "area_progress_rag": site_db.get("area_progress", {}),
         "area_waterproof_methods_rag": site_db.get("area_waterproof_methods", {}),
-        "previous_progress_rag": site_db.get("progress_before_app"),
+        "previous_progress_rag": site_db.get("area_progress", {}),  # 어제까지의 진행도 (이전 area_progress)
         "previous_daily_report_rag": site_db.get("previous_daily_report"),
         "inventory_rag": site_db.get("inventory", {}),
         "weather_rag": weather_data,
@@ -204,7 +203,7 @@ def initial_setup(payload: UserSetup, site_id: str = "default-site"):
     site_db["priority_areas"] = payload.priority_areas
     site_db["previous_daily_report"] = payload.previous_daily_report
     site_db["floor_area_map"] = payload.floor_area_map
-    site_db["area_progress"] = payload.area_progress
+    site_db["area_progress"] = payload.area_progress  # 초기 진행도 설정
     site_db["area_waterproof_methods"] = payload.area_waterproof_methods
     site_db["latitude"] = payload.latitude
     site_db["longitude"] = payload.longitude
@@ -216,6 +215,8 @@ def initial_setup(payload: UserSetup, site_id: str = "default-site"):
 def create_plan(payload: DailyInput):
     common_db = load_common_db()
     site_db = load_site_db(payload.site_id)
+    # site_db["area_progress"]는 이미 이전 작업 결과가 로드됨
+    # (초기값: progress_before_app → update_area_progress로 지속 업데이트)
 
     for material, qty in payload.incoming_materials.items():
         site_db["inventory"][material] = site_db["inventory"].get(material, 0) + qty
@@ -229,8 +230,8 @@ def create_plan(payload: DailyInput):
             "provider": "open-meteo",
             "location": {"latitude": lat, "longitude": lon},
             "hourly_weather": [],
+            "summary": "날씨 정보 없음",
             "integration_status": "failed_fallback",
-            "manual_weather_summary": payload.weather_summary,
         }
 
     rag_context = _build_rag_context(common_db=common_db, site_db=site_db, payload=payload, weather_data=weather_data)

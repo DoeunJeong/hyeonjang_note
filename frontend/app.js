@@ -143,6 +143,32 @@ async function loadSiteStatus(siteId) {
   if (data.priority_areas?.length) {
     document.getElementById("areas").value = data.priority_areas.join(",");
   }
+
+  // 이전 진행도 표시
+  if (data.area_progress && Object.keys(data.area_progress).length > 0) {
+    const progressSummary = document.getElementById("progress-summary");
+    const progressDetails = document.getElementById("progress-details");
+    progressDetails.innerHTML = "";
+
+    Object.entries(data.area_progress).forEach(([area, progress]) => {
+      const progressBar = document.createElement("div");
+      progressBar.style.marginBottom = "8px";
+      progressBar.innerHTML = `
+        <div style="display:flex; justify-content: space-between; font-size: 0.9em; margin-bottom: 3px;">
+          <span><strong>${area}</strong></span>
+          <span>${progress}% 완료</span>
+        </div>
+        <div style="background:#e0e0e0; height:20px; border-radius:3px; overflow:hidden;">
+          <div style="background:#4CAF50; height:100%; width:${progress}%; transition:width 0.3s;"></div>
+        </div>
+      `;
+      progressDetails.appendChild(progressBar);
+    });
+
+    progressSummary.style.display = "block";
+  } else {
+    document.getElementById("progress-summary").style.display = "none";
+  }
 }
 
 document.getElementById("site-select").addEventListener("change", async (e) => {
@@ -242,7 +268,6 @@ document.getElementById("plan-form").addEventListener("submit", async (e) => {
     selected_workers: selectedWorkers,
     incoming_materials: {},
     priority_areas: parseCSV(document.getElementById("areas").value),
-    weather_summary: document.getElementById("weather").value.trim() || null,
   };
 
   const data = await fetchJSON(`${API_BASE}/api/usecase2/plan`, {
@@ -252,6 +277,60 @@ document.getElementById("plan-form").addEventListener("submit", async (e) => {
   });
 
   renderTimeline(data.plan);
+
+  // 작업 종료 UI 표시 로직
+  const usecase3Section = document.getElementById("usecase3-section");
+  const progressInputs = document.getElementById("progress-inputs");
+  progressInputs.innerHTML = ""; // 이전 내용 초기화
+
+  // 계획 생성 시 참고했던 area_progress와 전체 구역 목록을 가져옴
+  const currentProgress = data.plan.rag_context.area_progress_rag || {};
+  const allAreas = data.plan.rag_context.all_areas_rag || [];
+
+  if (allAreas.length > 0) {
+    allAreas.forEach(area => {
+      const currentVal = Math.round(currentProgress[area] || 0);
+      const div = document.createElement("div");
+      // 각 구역별로 진행도를 입력할 수 있는 input 필드 생성
+      div.innerHTML = `
+        <label for="progress-${area}" style="display: inline-block; width: 120px;">${area}</label>
+        <input type="number" id="progress-${area}" value="${currentVal}" min="0" max="100" step="1" style="width: 80px;">
+        <span>%</span>
+      `;
+      progressInputs.appendChild(div);
+    });
+
+    // Usecase 3 섹션을 화면에 표시하고 스크롤
+    usecase3Section.classList.remove("hidden");
+    usecase3Section.scrollIntoView({ behavior: "smooth" });
+  }
+});
+
+// "최종 진행도 저장" 버튼 이벤트 리스너
+document.getElementById("progress-update-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const progressInputsDiv = document.getElementById("progress-inputs");
+  const inputs = progressInputsDiv.querySelectorAll('input[type="number"]');
+  const areaProgress = {};
+
+  // 각 input 필드에서 수정된 진행도 값을 읽어 areaProgress 객체 생성
+  inputs.forEach(input => {
+    const area = input.id.replace("progress-", "");
+    areaProgress[area] = parseFloat(input.value);
+  });
+
+  // 백엔드에 area_progress 업데이트 요청
+  await fetchJSON(`${API_BASE}/api/usecase3/progress`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      site_id: activeSiteId,
+      area_progress: areaProgress,
+    }),
+  });
+
+  alert("오늘의 최종 작업 진행도를 성공적으로 저장했습니다! 이제 내일 계획 수립 시 이 데이터가 사용됩니다.");
+  document.getElementById("usecase3-section").classList.add("hidden"); // UI 숨김
 });
 
 loadMaterialOptions()

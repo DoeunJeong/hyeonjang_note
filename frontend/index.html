@@ -66,6 +66,12 @@
 
       <section id="usecase2-section" class="hidden">
         <h2>Usecase2: 작업 전 입력</h2>
+        
+        <div id="progress-summary" style="display:none; background:#f9f9f9; padding:10px; margin-bottom:15px; border-left:4px solid #0066cc;">
+          <h4>📊 어제까지의 진행도</h4>
+          <div id="progress-details"></div>
+        </div>
+
         <form id="plan-form">
           <p id="active-site-text"></p>
           <label>오늘 작업 인력 선택</label>
@@ -74,16 +80,22 @@
           <label>우선 작업 구역(쉼표 구분)
             <input id="areas" placeholder="세대,상가" />
           </label>
-          <label>수동 날씨 메모(선택)
-            <input id="weather" placeholder="비 예보로 옥외 작업 최소화" />
-          </label>
-          <button type="submit">오늘의 계획 생성 (Gemini + RAG)</button>
+          <button type="submit">오늘의 계획 생성 (Gemini + RAG + 자동 날씨)</button>
         </form>
       </section>
 
       <section>
         <h2>AI 작업 타임라인</h2>
         <div id="timeline"></div>
+      </section>
+
+      <section id="usecase3-section" class="hidden">
+        <h2>Usecase 3: 작업 종료 및 진행도 업데이트</h2>
+        <form id="progress-update-form">
+          <p>오늘 작업 결과를 반영하여 각 구역의 최종 진행도(%)를 업데이트하세요.</p>
+          <div id="progress-inputs"></div>
+          <button type="submit">최종 진행도 저장</button>
+        </form>
       </section>
     </main>
 

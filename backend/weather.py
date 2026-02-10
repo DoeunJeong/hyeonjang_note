@@ -44,6 +44,28 @@ def _hourly_weather_rows(hourly: Dict, max_slots: int = 20) -> List[Dict]:
     return rows
 
 
+def _format_weather_summary(hourly_rows: List[Dict]) -> str:
+    """시간별 날씨 데이터를 텍스트 형식으로 변환 (7:10~16:30 작업 시간)"""
+    if not hourly_rows:
+        return "날씨 정보 없음"
+    
+    summary_parts = []
+    for row in hourly_rows:
+        time = row.get("time", "")
+        temp = row.get("temperature_2m", "-")
+        humidity = row.get("relative_humidity_2m", "-")
+        precip_prob = row.get("precipitation_probability", "-")
+        precip = row.get("precipitation", "-")
+        
+        # 시간별 요약: "07:10: 기온 5℃, 습도 60%, 강수확률 10%"
+        line = f"{time}: 기온 {temp}℃, 습도 {humidity}%, 강수확률 {precip_prob}%"
+        if precip and precip > 0:
+            line += f", 강수 {precip}mm"
+        summary_parts.append(line)
+    
+    return " / ".join(summary_parts)
+
+
 def fetch_today_weather(latitude: float, longitude: float) -> Dict:
     request_spec = build_weather_request(latitude=latitude, longitude=longitude)
     query = urlencode(request_spec["params"])
@@ -57,4 +79,5 @@ def fetch_today_weather(latitude: float, longitude: float) -> Dict:
         "provider": "open-meteo",
         "location": {"latitude": latitude, "longitude": longitude},
         "hourly_weather": hourly_rows,
+        "summary": _format_weather_summary(hourly_rows),
     }
