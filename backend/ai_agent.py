@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class PlanItem(BaseModel):
-    workers: List[str]
+    worker: str
     start: str
     end: str
     area: str
@@ -19,8 +19,6 @@ class PlanItem(BaseModel):
 class PlanOutput(BaseModel):
     scheduler_status: str = "llm_generated"
     model: str = "gemini-2.0-flash"
-    overview: str = Field(default="AI가 생성한 오늘의 작업 개요입니다.")
-    guidelines: List[str] = Field(default_factory=lambda: ["안전 수칙 준수", "품질 관리 철저"])
     timeline: List[PlanItem] = Field(default_factory=list)
     notes: List[str] = Field(default_factory=list)
 
@@ -47,7 +45,7 @@ def _fallback_plan(context: Dict) -> Dict:
             area = areas[(worker_idx + i) % len(areas)]
             timeline.append(
                 {
-                    "workers": [worker],
+                    "worker": worker,
                     "start": start,
                     "end": next_time,
                     "area": area,
@@ -58,8 +56,6 @@ def _fallback_plan(context: Dict) -> Dict:
     return {
         "scheduler_status": "llm_fallback",
         "model": "fallback",
-        "overview": "기본 규칙에 기반한 작업 배정안입니다.",
-        "guidelines": ["표준 안전 수칙 준수", "작업 전 보호구 착용 확인"],
         "timeline": timeline,
         "notes": ["GEMINI_API_KEY 미설정 또는 LLM 호출 실패로 기본안을 반환했습니다."],
     }
@@ -81,25 +77,29 @@ def _compact_payload(context: Dict) -> Dict:
     }
 
 
-def run_planning_agent(context: Dict) -> Dict:
+async def run_planning_agent(context: Dict) -> Dict:
+    print(" -> [4-1] 'run_planning_agent' 함수 진입")
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
+        print(" -> [!!!] API 키를 찾을 수 없어 기본(Fallback) 계획을 반환합니다.")
         return _fallback_plan(context)
 
-    # Ensure the API key is set for LangChain if it was found as GEMINI_API_KEY
     if not os.getenv("GOOGLE_API_KEY") and api_key:
         os.environ["GOOGLE_API_KEY"] = api_key
-
+    
+    print(" -> [4-2] LangChain 및 Google AI 라이브러리 import 시도")
     try:
         from langchain_core.output_parsers import PydanticOutputParser
         from langchain_core.prompts import ChatPromptTemplate
         from langchain_google_genai import ChatGoogleGenerativeAI
-    except Exception:
-        return _fallback_plan(context)
+        print(" -> [4-3] 라이브러리 import 성공")
+    except Exception as e:
+        print(f" -> [!!!] 라이브러리 import 실패: {e}")
+        raise e
 
+    # 변수를 먼저 정의합니다.
     parser = PydanticOutputParser(pydantic_object=PlanOutput)
     compact = _compact_payload(context)
-
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -119,6 +119,7 @@ def run_planning_agent(context: Dict) -> Dict:
 - inventory_rag: 현재 자재 재고
 - weather_rag: 시간별 날씨 정보 (기온, 습도, 강수확률)
 - waterproof_sequences_rag: 방수 작업 순서(RAG)
+- floor_range_rag: 오늘 작업할 층수 범위 (start~end층). 아랫층부터 윗층 순서대로 작업 배정해라.
 - time_slots: 08:00~17:00 30분 단위 시간 슬롯
 
 **작업 배정 규칙:**
@@ -128,6 +129,7 @@ def run_planning_agent(context: Dict) -> Dict:
 4. **시간 연속성**: 작업은 가능한 끊기지 않고 연속되게 배정해라.
 5. **날씨 고려**: 강수확률이 높으면 실내 작업 위주로 배정해라.
 6. **overview 및 guidelines**: 오늘의 전체적인 작업 전략과 안전/품질 주의사항을 구체적으로 작성해라.
+7. **층수 순서 준수**: floor_range_rag에 start/end가 있으면 해당 층 범위 내에서만 작업을 배정하고, **아랫층(start)부터 윗층(end) 순서**로 작업해라. 예: 2층→3층→4층
 
 {format_instructions}
 """,
@@ -138,18 +140,27 @@ def run_planning_agent(context: Dict) -> Dict:
             ),
         ]
     )
-
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
-    chain = prompt | llm | parser
+    
+    print(" -> [4-4] LLM(AI 모델) 초기화 시도 (model='gemini-2.0-flash')")
+    try:
+        llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.2)
+        chain = prompt | llm | parser
+        print(" -> [4-5] LLM 초기화 및 체인 구성 성공")
+    except Exception as e:
+        print(f" -> [!!!] LLM 초기화 실패: {e}")
+        raise e
 
     try:
-        parsed: PlanOutput = chain.invoke(
+        print(" -> [4-6] AI 모델에 작업 계획 생성 요청 시작...")
+        parsed: PlanOutput = await chain.ainvoke(
             {
                 "planning_inputs_json": json.dumps(compact, ensure_ascii=False),
                 "time_slots": _build_time_slots(),
                 "format_instructions": parser.get_format_instructions(),
             }
         )
+        print(" -> [4-7] AI 모델로부터 응답 수신 성공!")
         return parsed.model_dump()
-    except Exception:
+    except Exception as e:
+        print(f" -> [!!!] AI 모델 호출 실패: {e}")
         return _fallback_plan(context)

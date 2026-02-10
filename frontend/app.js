@@ -1,4 +1,5 @@
-const API_BASE = "http://localhost:8000";
+
+const API_BASE = "";  // 같은 서버에서 서빙되므로 상대경로 사용
 let activeSiteId = "";
 let currentPlan = null;
 let workItems = [];
@@ -21,9 +22,22 @@ function buildTimeSlots(start = "08:00", end = "17:00") {
 }
 
 async function fetchJSON(url, options = {}) {
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error(`요청 실패: ${res.status}`);
-  return res.json();
+  const controller = new AbortController();
+  const timeout = options.timeout || 120000; // 기본 타임아웃 120초 (AI 호출 고려)
+  const timer = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`요청 실패: ${res.status}`);
+    return res.json();
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new Error('서버 응답 시간 초과 (120초). 다시 시도해주세요.');
+    }
+    throw err;
+  }
 }
 
 // --- 네비게이션 ---
@@ -104,24 +118,17 @@ async function loadSiteStatus(siteId) {
     
     renderWorkers(data.workers || []);
     renderInventory(data.inventory || {});
-    renderProgress(data.overall_progress || 0, data.area_progress_details || []);
+    renderAreaProgress(data.area_progress || {}, data.overall_progress || 0);
     
     if (data.priority_areas?.length) {
       document.getElementById("areas").value = data.priority_areas.join(",");
     }
 
-    if (data.plan && data.plan.timeline) {
-      currentPlan = data.plan;
-      renderTimeline(data.plan);
-      initWorkChecklist(data.plan.timeline);
-      
-      const timelineContainer = document.getElementById("timeline-container");
-      timelineContainer.classList.remove("hidden");
-      timelineContainer.scrollIntoView({ behavior: "smooth" });
-    }
+    // 타임라인은 AI 계획 생성 버튼을 눌러야 표시됨
+    document.getElementById("timeline-container").classList.add("hidden");
     
   } catch (error) {
-    console.error(error);
+    console.error("현장 상태 로딩 실패:", error);
   }
 }
 
@@ -152,6 +159,121 @@ function renderInventory(inventory) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${material}</td><td>${qty}</td>`;
     body.appendChild(tr);
+  });
+}
+
+function renderAreaProgress(areaProgress, overallProgress) {
+  const pct = Math.round(overallProgress || 0);
+  document.getElementById("overall-percent").textContent = `${pct}%`;
+  document.getElementById("overall-bar").style.width = `${pct}%`;
+
+  const container = document.getElementById("area-progress-list");
+  container.innerHTML = "";
+
+  Object.entries(areaProgress).forEach(([area, progress]) => {
+    const p = Math.round(progress);
+    const div = document.createElement("div");
+    div.className = "area-progress-item";
+    div.innerHTML = `
+      <div class="progress-label">
+        <span class="area-name">${area}</span>
+        <span class="progress-percent">${p}%</span>
+      </div>
+      <div class="area-bar-bg">
+        <div class="area-bar-fill" style="width: ${p}%;"></div>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function renderTimeline(plan) {
+  const container = document.getElementById("timeline");
+  container.innerHTML = "";
+
+  if (!plan.timeline || !plan.timeline.length) {
+    container.innerHTML = "<p>\ud0c0\uc784\ub77c\uc778 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</p>";
+    return;
+  }
+
+  if (plan.overview) {
+    const overview = document.createElement("div");
+    overview.style.cssText = "margin-bottom:15px; padding:12px; background:#e8eaf6; border-radius:8px;";
+    overview.innerHTML = `<strong>\ud83d\udccb \uc791\uc5c5 \uac1c\uc694:</strong> ${plan.overview}`;
+    container.appendChild(overview);
+  }
+
+  const table = document.createElement("table");
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th style="width:120px;">\uc2dc\uac04</th>
+        <th style="width:80px;">\uc791\uc5c5\uc790</th>
+        <th style="width:100px;">\uad6c\uc5ed</th>
+        <th>\uc791\uc5c5 \ub0b4\uc6a9</th>
+      </tr>
+    </thead>
+  `;
+  const tbody = document.createElement("tbody");
+  plan.timeline.forEach(item => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.start} - ${item.end}</td>
+      <td>${item.worker}</td>
+      <td>${item.area}</td>
+      <td>${item.task}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+
+  if (plan.weather && plan.weather.description) {
+    const weather = document.createElement("div");
+    weather.style.cssText = "margin-top:10px; padding:10px; background:#fff3e0; border-radius:8px; font-size:0.9rem;";
+    weather.innerHTML = `<strong>\ud83c\udf24\ufe0f \ub0a0\uc528:</strong> ${plan.weather.description}`;
+    container.appendChild(weather);
+  }
+
+  if (plan.notes && plan.notes.length) {
+    const notes = document.createElement("div");
+    notes.style.cssText = "margin-top:10px; padding:10px; background:#fce4ec; border-radius:8px; font-size:0.9rem;";
+    notes.innerHTML = `<strong>\ud83d\udccc \ucc38\uace0\uc0ac\ud56d:</strong><ul style="margin:5px 0 0 15px;">${plan.notes.map(n => '<li>' + n + '</li>').join("")}</ul>`;
+    container.appendChild(notes);
+  }
+}
+
+function initWorkChecklist(timeline) {
+  const tbody = document.getElementById("closing-table-body");
+  tbody.innerHTML = "";
+  workItems = [];
+
+  const workerSelect = document.getElementById("edit-worker");
+  const existingWorkers = new Set();
+
+  timeline.forEach((item, idx) => {
+    existingWorkers.add(item.worker);
+    workItems.push({ ...item, completed: false, note: "" });
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.worker}</td>
+      <td>${item.start} - ${item.end}</td>
+      <td>${item.area}</td>
+      <td>${item.task}</td>
+      <td><input type="checkbox" data-idx="${idx}" class="work-check"></td>
+      <td><input type="text" data-idx="${idx}" class="work-note" placeholder="\ube44\uace0" style="width:100%;"></td>
+      <td><button type="button" class="btn-small btn-danger work-delete" data-idx="${idx}">\uc0ad\uc81c</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  workerSelect.innerHTML = '<option value="">\uc791\uc5c5\uc790</option>';
+  existingWorkers.forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    workerSelect.appendChild(opt);
   });
 }
 
@@ -193,8 +315,12 @@ document.getElementById("add-worker-btn").addEventListener("click", async () => 
 // 기존 submit 이벤트 리스너 제거 또는 변경
 // document.getElementById("plan-form").addEventListener("submit", ... ) -> 이 부분 수정 필요
 
+// 폼 기본 제출 차단
+document.getElementById("plan-form").addEventListener("submit", (e) => { e.preventDefault(); });
+
 // 버튼 클릭 이벤트로 변경
-document.getElementById("generate-plan-btn").addEventListener("click", async () => {
+document.getElementById("generate-plan-btn").addEventListener("click", async (e) => {
+  e.preventDefault();
   const submitBtn = document.getElementById("generate-plan-btn");
   const originalText = submitBtn.textContent;
 
@@ -210,6 +336,8 @@ document.getElementById("generate-plan-btn").addEventListener("click", async () 
       selected_workers: selectedWorkers,
       incoming_materials: {},
       priority_areas: parseCSV(document.getElementById("areas").value),
+      floor_start: parseInt(document.getElementById("floor-start").value) || null,
+      floor_end: parseInt(document.getElementById("floor-end").value) || null,
     };
 
     const data = await fetchJSON(`${API_BASE}/api/usecase2/plan`, {
@@ -218,7 +346,8 @@ document.getElementById("generate-plan-btn").addEventListener("click", async () 
       body: JSON.stringify(payload),
     });
 
-    console.log("Plan created:", data); // 디버그용 로그 추가
+    console.log("Plan created:", JSON.stringify(data).substring(0, 300)); // 디버그용 로그 추가
+    console.log("[DEBUG] data.plan exists:", !!data.plan, "data.plan.timeline exists:", !!(data.plan && data.plan.timeline));
 
     currentPlan = data.plan;
     
@@ -240,6 +369,73 @@ document.getElementById("generate-plan-btn").addEventListener("click", async () 
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;
   }
+});
+
+// --- 3. 작업 마감 뷰 이벤트 핸들러 ---
+
+// 체크리스트 체크/노트 이벤트 위임
+document.getElementById("closing-table-body").addEventListener("change", (e) => {
+  const idx = Number(e.target.dataset.idx);
+  if (e.target.classList.contains("work-check") && workItems[idx]) {
+    workItems[idx].completed = e.target.checked;
+  }
+  if (e.target.classList.contains("work-note") && workItems[idx]) {
+    workItems[idx].note = e.target.value;
+  }
+});
+
+// 삭제 버튼 이벤트 위임
+document.getElementById("closing-table-body").addEventListener("click", (e) => {
+  if (e.target.classList.contains("work-delete")) {
+    const idx = Number(e.target.dataset.idx);
+    workItems.splice(idx, 1);
+    initWorkChecklist(workItems);
+  }
+});
+
+// 추가 작업 등록
+document.getElementById("add-work-item-btn").addEventListener("click", () => {
+  const worker = document.getElementById("edit-worker").value;
+  const start = document.getElementById("edit-start").value || "08:00";
+  const end = document.getElementById("edit-end").value || "17:00";
+  const area = document.getElementById("edit-area").value;
+  const task = document.getElementById("edit-task").value.trim();
+
+  if (!worker || !task) { alert("작업자와 작업 내용을 입력하세요."); return; }
+
+  workItems.push({ worker, start, end, area, task, completed: false, note: "" });
+  initWorkChecklist(workItems);
+
+  document.getElementById("edit-task").value = "";
+});
+
+// 작업 일지 저장
+document.getElementById("save-work-result-btn").addEventListener("click", async () => {
+  if (!activeSiteId) { alert("현장이 선택되지 않았습니다."); return; }
+  if (!workItems.length) { alert("저장할 작업 내역이 없습니다."); return; }
+
+  try {
+    await fetchJSON(`${API_BASE}/api/usecase3/save-work`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site_id: activeSiteId, work_items: workItems }),
+    });
+    alert("작업 일지가 저장되었습니다.");
+  } catch (err) {
+    alert("저장 실패: " + (err.message || err));
+  }
+});
+
+// 작업일지 양식 다운로드 (Excel)
+document.getElementById("download-report-btn").addEventListener("click", () => {
+  if (!activeSiteId) { alert("현장이 선택되지 않았습니다."); return; }
+  window.open(`${API_BASE}/api/usecase3/work-report?site_id=${encodeURIComponent(activeSiteId)}`, "_blank");
+});
+
+// 노무대장 엑셀 다운로드
+document.getElementById("download-manpower-btn").addEventListener("click", () => {
+  if (!activeSiteId) { alert("현장이 선택되지 않았습니다."); return; }
+  window.open(`${API_BASE}/api/usecase3/manpower-log?site_id=${encodeURIComponent(activeSiteId)}`, "_blank");
 });
 
 // 초기 로딩
@@ -287,208 +483,3 @@ document.getElementById("add-inventory-btn").addEventListener("click", async () 
   document.getElementById("material-qty").value = "";
   document.getElementById("custom-material").value = "";
 });
-
-function renderTimeline(plan) {
-    if (!plan || !plan.timeline) {
-        console.warn("타임라인 렌더링 스킵: 플랜 또는 타임라인 데이터 없음");
-        return;
-    }
-
-    const timelineDiv = document.getElementById("timeline");
-    if (!timelineDiv) return;
-    
-    timelineDiv.innerHTML = ""; // 이전 내용 지우기
-
-    const timeline = plan.timeline || [];
-
-    // 타임라인 테이블 생성
-    const tableHtml = `
-        <div class="table-container" style="margin-top: 20px;">
-            <table class="plan-table">
-                <thead>
-                    <tr>
-                        <th style="width: 120px;">시간</th>
-                        <th style="width: 150px;">구역</th>
-                        <th style="width: 150px;">담당 작업자</th>
-                        <th>상세 작업 내용</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${timeline.map(item => {
-                        const workerDisplay = Array.isArray(item.workers) ? item.workers.join(", ") : (item.worker || "미정");
-                        const timeDisplay = item.time || `${item.start} ~ ${item.end}`;
-                        return `
-                            <tr>
-                                <td class="text-center">${timeDisplay}</td>
-                                <td class="text-center"><strong>${item.area || "-"}</strong></td>
-                                <td class="text-center">${workerDisplay}</td>
-                                <td>${item.task}</td>
-                            </tr>
-                        `;
-                    }).join("")}
-                </tbody>
-            </table>
-        </div>`;
-
-    timelineDiv.innerHTML = tableHtml;
-    document.getElementById("timeline-container").classList.remove("hidden");
-}
-
-// --- 3. 작업 마감 ---
-function initWorkChecklist(timeline) {
-  const body = document.getElementById("closing-table-body");
-  const editWorkerSelect = document.getElementById("edit-worker");
-  if (!body || !editWorkerSelect) return;
-  
-  body.innerHTML = "";
-  workItems = [];
-
-  // 작업자 목록 (추가 작업용)
-  const allWorkers = new Set();
-  timeline.forEach(item => {
-    if (Array.isArray(item.workers)) {
-      item.workers.forEach(w => allWorkers.add(w));
-    } else if (item.worker) {
-      allWorkers.add(item.worker);
-    }
-  });
-
-  editWorkerSelect.innerHTML = `<option value="">작업자</option>`;
-  [...allWorkers].sort().forEach(w => {
-    const opt = document.createElement("option");
-    opt.value = w;
-    opt.textContent = w;
-    editWorkerSelect.appendChild(opt);
-  });
-
-  timeline.forEach((item, idx) => {
-    const id = `work-${idx}`;
-    const workerDisplay = Array.isArray(item.workers) ? item.workers.join(", ") : (item.worker || "미정");
-    const workItem = {
-      id,
-      worker: workerDisplay,
-      start: item.start || "",
-      end: item.end || "",
-      area: item.area || "",
-      task: item.task || "",
-      completed: false,
-      note: ""
-    };
-    workItems.push(workItem);
-    addWorkRow(workItem);
-  });
-}
-
-function addWorkRow(item) {
-  const body = document.getElementById("closing-table-body");
-  const tr = document.createElement("tr");
-  tr.id = `row-${item.id}`;
-  tr.innerHTML = `
-    <td>${item.worker}</td>
-    <td>${item.start}~${item.end}</td>
-    <td>${item.area}</td>
-    <td>${item.task}</td>
-    <td><input type="checkbox" ${item.completed ? "checked" : ""} onchange="updateWorkStatus('${item.id}', this.checked)"></td>
-    <td><input type="text" class="small-input" value="${item.note || ""}" onchange="updateWorkNote('${item.id}', this.value)"></td>
-    <td><button class="btn-danger btn-sm" onclick="removeWorkItem('${item.id}')">✕</button></td>
-  `;
-  body.appendChild(tr);
-}
-
-window.updateWorkStatus = (id, checked) => {
-  const item = workItems.find(i => i.id === id);
-  if (item) item.completed = checked;
-};
-
-window.updateWorkNote = (id, value) => {
-  const item = workItems.find(i => i.id === id);
-  if (item) item.note = value;
-};
-
-window.removeWorkItem = (id) => {
-  workItems = workItems.filter(i => i.id !== id);
-  const row = document.getElementById(`row-${id}`);
-  if (row) row.remove();
-};
-
-document.getElementById("add-work-item-btn").addEventListener("click", () => {
-  const worker = document.getElementById("edit-worker").value;
-  const start = document.getElementById("edit-start").value || "08:00";
-  const end = document.getElementById("edit-end").value || "17:00";
-  const area = document.getElementById("edit-area").value;
-  const task = document.getElementById("edit-task").value;
-
-  if (!worker || !area || !task) {
-    alert("작업자, 구역, 작업내용을 모두 입력하세요.");
-    return;
-  }
-
-  const id = `extra-${Date.now()}`;
-  const newItem = { id, worker, start, end, area, task, completed: true, note: "추가작업" };
-  workItems.push(newItem);
-  addWorkRow(newItem);
-
-  // 초기화
-  document.getElementById("edit-task").value = "";
-});
-
-document.getElementById("save-work-result-btn").addEventListener("click", async () => {
-  if (!activeSiteId) return;
-  
-  const payload = {
-    site_id: activeSiteId,
-    date: new Date().toISOString().split("T")[0],
-    actual_work: workItems
-  };
-
-  try {
-    await fetchJSON(`${API_BASE}/api/usecase3/work-result`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    alert("오늘의 작업 일지가 성공적으로 저장되었습니다.");
-  } catch (error) {
-    alert("저장 실패: " + error.message);
-  }
-});
-
-document.getElementById("download-manpower-btn").addEventListener("click", () => {
-  if (!activeSiteId) { alert("현장을 먼저 선택하세요."); return; }
-  window.location.href = `${API_BASE}/api/usecase3/manpower-log?site_id=${encodeURIComponent(activeSiteId)}`;
-});
-
-document.getElementById("download-report-btn").addEventListener("click", () => {
-  if (!activeSiteId) { alert("현장을 먼저 선택하세요."); return; }
-  const date = new Date().toISOString().split("T")[0];
-  window.location.href = `${API_BASE}/api/usecase3/daily-report?site_id=${encodeURIComponent(activeSiteId)}&date=${date}`;
-});
-
-function renderProgress(overallProgress, areaDetails) {
-  // 전체 진척률 업데이트
-  const overallPercent = document.getElementById("overall-percent");
-  const overallBar = document.getElementById("overall-bar");
-  
-  if (overallPercent && overallBar) {
-    overallPercent.textContent = `${overallProgress}%`;
-    overallBar.style.width = `${overallProgress}%`;
-  }
-
-  // 구역별 진척률 업데이트
-  const areaList = document.getElementById("area-progress-list");
-  if (areaList) {
-    areaList.innerHTML = "";
-    areaDetails.forEach(area => {
-      const item = document.createElement("div");
-      item.className = "area-progress-item";
-      item.innerHTML = `
-        <span class="area-name">${area.name} <span class="progress-percent">${area.progress}%</span></span>
-        <div class="area-bar-bg">
-          <div class="area-bar-fill" style="width: ${area.progress}%;"></div>
-        </div>
-      `;
-      areaList.appendChild(item);
-    });
-  }
-}
-

@@ -124,6 +124,14 @@
               <label>투입 인력 선택</label>
               <div id="worker-checkboxes" class="checkbox-group"></div>
 
+              <label style="margin-top: 15px;">작업 층수 범위</label>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                <input id="floor-start" type="number" min="1" placeholder="시작층" style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 6px;" />
+                <span style="font-weight: 600;">층 ~</span>
+                <input id="floor-end" type="number" min="1" placeholder="끝층" style="width: 100px; padding: 8px; border: 1px solid #ddd; border-radius: 6px;" />
+                <span style="font-weight: 600;">층</span>
+              </div>
+
               <label style="margin-top: 15px;">우선 작업 구역 (선택사항)</label>
               <input id="areas" placeholder="예: 104동, 105동 (비워두면 AI가 추천)" class="full-width" />
               
